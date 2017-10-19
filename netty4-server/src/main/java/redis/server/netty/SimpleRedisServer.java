@@ -22,8 +22,11 @@ public class SimpleRedisServer implements RedisServer {
   private static final StatusReply PONG = new StatusReply("PONG");
   private long started = now();
 
+  //数据存储
   private BytesKeyObjectMap<Object> data = new BytesKeyObjectMap<Object>();
+  //失效数据存储
   private BytesKeyObjectMap<Long> expires = new BytesKeyObjectMap<Long>();
+
   private static int[] mask = {128, 64, 32, 16, 8, 4, 2, 1};
 
   private static RedisException invalidValue() {
@@ -265,6 +268,7 @@ public class SimpleRedisServer implements RedisServer {
 
   static {
     try {
+      //必须是 jdk1.7  ,jdk1.8不兼容
       tableField = HashMap.class.getDeclaredField("table");
       tableField.setAccessible(true);
       nextField = Class.forName("java.util.HashMap$Entry").getDeclaredField("next");

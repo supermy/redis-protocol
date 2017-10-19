@@ -28,7 +28,8 @@ public class Main {
     }
 
     // Only execute the command handler in a single thread
-    final RedisCommandHandler commandHandler = new RedisCommandHandler(new SimpleRedisServer());
+//      final RedisCommandHandler commandHandler = new RedisCommandHandler(new SimpleRedisServer());
+      final RedisCommandHandler commandHandler = new RedisCommandHandler(new RocksdbRedisServer());
 
     // Configure the server.
     ServerBootstrap b = new ServerBootstrap();

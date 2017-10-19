@@ -4,6 +4,11 @@ import java.io.IOException;
 
 import io.netty.buffer.ByteBuf;
 
+/**
+ * 回复信息接口
+ *
+ * @param <T>
+ */
 public interface Reply<T> {
   byte[] CRLF = new byte[] { RedisReplyDecoder.CR, RedisReplyDecoder.LF };
 

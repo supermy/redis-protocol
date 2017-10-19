@@ -9,13 +9,20 @@ import java.nio.charset.Charset;
 
 import static redis.util.Encoding.numToBytes;
 
+/**
+ * 批量回复
+ */
 public class BulkReply implements Reply<ByteBuf> {
   public static final BulkReply NIL_REPLY = new BulkReply();
 
   public static final char MARKER = '$';
+  //字节缓存
   private final ByteBuf bytes;
   private final int capacity;
 
+  /**
+   * 构造子，字节内容与容量都是空
+   */
   private BulkReply() {
     bytes = null;
     capacity = -1;

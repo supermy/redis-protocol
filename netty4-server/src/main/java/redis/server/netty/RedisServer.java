@@ -6,6 +6,9 @@ import redis.netty4.MultiBulkReply;
 import redis.netty4.Reply;
 import redis.netty4.StatusReply;
 
+/**
+ * 定义 Redis 的所有方法
+ */
 public interface RedisServer {
 
 

@@ -8,6 +8,7 @@ import java.io.IOException;
 import static redis.util.Encoding.numToBytes;
 
 /**
+ * 命令序列化对象
  * Command serialization.  We special case when there are few 4 or fewer parameters
  * since most commands fall into that category. Passing bytes, channelbuffers and
  * strings / objects are all allowed. All strings are assumed to be UTF-8.
@@ -23,6 +24,15 @@ public class Command {
   private final Object object1;
   private final Object object2;
   private final Object object3;
+  //Redis支持两种协议，一种是inline，一种是multibulk。inline协议是老协议，现在一般只在命令行下的redis客户端使用，
+  // 其他情况一般是使用multibulk协议。如果客户端传送的数据的第一个字符时‘*’，那么传送数据将被当做multibulk协议处理，
+  // 否则将被当做inline协议处理。
+  /**
+   * Inline命令：
+   有些时候仅仅是telnet连接Redis服务，或者是仅仅向Redis服务发送一个命令进行检测。虽然Redis协议可以很容易的实现，
+   但是使用Interactive sessions 并不理想，而且redis-cli也不总是可以使用。基于这些原因，Redis支持特殊的命令来实现上面描述的情况。
+   这些命令的设计是很人性化的，被称作Inline 命令。
+   */
   private final boolean inline;
 
   public Command(Object[] objects) {
@@ -62,6 +72,12 @@ public class Command {
     this.inline = inline;
   }
 
+  /**
+   *
+   * 获取命令指令
+   *
+   * @return
+   */
   public byte[] getName() {
     // It is either the name or the first objects in the objects array
     if (name != null) return getBytes(name);
@@ -88,17 +104,26 @@ public class Command {
     return argument;
   }
 
+  /**
+   * 给参数arguments赋值,解析 Command 中的字节数据到
+   * @param arguments
+   * @param types
+   */
   public void toArguments(Object[] arguments, Class<?>[] types) {
     int position = 0;
+    //按类型便利
     for (Class<?> type : types) {
+      //字节数组
       if (type == byte[].class) {
         if (position >= arguments.length) {
           throw new IllegalArgumentException("wrong number of arguments for '" + new String(getName()) + "' command");
         }
+        //
         if (objects.length - 1 > position) {
           arguments[position] = objects[1 + position];
         }
       } else {
+        //
         int left = objects.length - position - 1;
         byte[][] lastArgument = new byte[left][];
         for (int i = 0; i < left; i++) {
