@@ -2,19 +2,14 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import org.rocksdb.*;
-import org.rocksdb.util.SizeUnit;
 import redis.netty4.*;
 import redis.util.*;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
 import java.security.SecureRandom;
 import java.util.*;
 
-import static java.lang.Double.parseDouble;
+import static java.lang.Double.valueOf;
 import static java.lang.Integer.MAX_VALUE;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
@@ -23,256 +18,14 @@ import static redis.netty4.StatusReply.QUIT;
 import static redis.util.Encoding.bytesToNum;
 import static redis.util.Encoding.numToBytes;
 
-public class RocksdbRedisServer implements RedisServer {
+/**
+ * Rocksdb 结合 Redis
+ */
+public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 
     private static final StatusReply PONG = new StatusReply("PONG");
     private long started = now();
 
-    //数据存储
-    private BytesKeyObjectMap<Object> data = new BytesKeyObjectMap<Object>();
-    //失效数据存储
-    private BytesKeyObjectMap<Long> expires = new BytesKeyObjectMap<Long>();
-
-    private RocksDB mydata = getDb("netty4-server/db/data");
-    private RocksDB myexpires = getDb("netty4-server/db/expires");
-
-    private static int[] mask = {128, 64, 32, 16, 8, 4, 2, 1};
-
-    private static RedisException invalidValue() {
-        return new RedisException("Operation against a key holding the wrong kind of value");
-    }
-
-    private static RedisException notInteger() {
-        return new RedisException("value is not an integer or out of range");
-    }
-
-    private static RedisException notFloat() {
-        return new RedisException("value is not a float or out of range");
-    }
-
-    @SuppressWarnings("unchecked")
-    private BytesKeyObjectMap<byte[]> _gethash(byte[] key0, boolean create) throws RedisException {
-        Object o = _get(key0);
-        if (o == null) {
-            o = new BytesKeyObjectMap();
-            if (create) {
-                try {
-                    mydata.put(key0,ObjectToByte(o));
-                } catch (RocksDBException e) {
-                    e.printStackTrace();
-                    throw new RuntimeException(e.getMessage());
-                }
-
-
-                data.put(key0, o);
-            }
-        }
-        if (!(o instanceof HashMap)) {
-            throw invalidValue();
-        }
-        return (BytesKeyObjectMap<byte[]>) o;
-    }
-
-    @SuppressWarnings("unchecked")
-    private BytesKeySet _getset(byte[] key0, boolean create) throws RedisException {
-        Object o = _get(key0);
-        if (o == null) {
-            o = new BytesKeySet();
-            if (create) {
-
-                try {
-                    mydata.put(key0,ObjectToByte(o));
-                } catch (RocksDBException e) {
-                    e.printStackTrace();
-                    throw new RuntimeException(e.getMessage());
-                }
-
-                data.put(key0, o);
-            }
-        }
-        if (!(o instanceof BytesKeySet)) {
-            throw invalidValue();
-        }
-        return (BytesKeySet) o;
-    }
-
-    @SuppressWarnings("unchecked")
-    private ZSet _getzset(byte[] key0, boolean create) throws RedisException {
-        Object o = _get(key0);
-        if (o == null) {
-            o = new ZSet();
-            if (create) {
-
-                try {
-                    mydata.put(key0,ObjectToByte(o));
-                } catch (RocksDBException e) {
-                    e.printStackTrace();
-                    throw new RuntimeException(e.getMessage());
-                }
-
-                data.put(key0, o);
-            }
-        }
-        if (!(o instanceof ZSet)) {
-            throw invalidValue();
-        }
-        return (ZSet) o;
-    }
-
-    /**
-     * RocksDb 存储数据
-     * @param key0
-     * @return
-     */
-    private byte[] __get(byte[] key0) throws RedisException {
-        byte[] o  = new byte[0];
-        try {
-            o = mydata.get(key0);
-            if (o != null) {
-                byte[] bytes = myexpires.get(key0);
-                if (bytes != null) {
-                    long l = bytesToNum(bytes);
-                    if (l < now()) {
-                        myexpires.delete(key0);
-                        mydata.delete(key0);
-                        return null;
-                    }
-                }
-            }
-
-        } catch (RocksDBException e) {
-            throw  new RedisException(e.getMessage());
-        }
-
-        return o;
-    }
-
-    private Object _get(byte[] key0) {
-        Object o = data.get(key0);
-        if (o != null) {
-            Long l = expires.get(key0);
-            if (l != null) {
-                if (l < now()) {
-                    data.remove(key0);
-                    return null;
-                }
-            }
-        }
-        return o;
-    }
-
-    private IntegerReply _change(byte[] key0, long delta) throws RedisException {
-        Object o = _get(key0);
-        if (o == null) {
-            _put(key0, numToBytes(delta, false));
-            return integer(delta);
-        } else if (o instanceof byte[]) {
-            try {
-                long integer = bytesToNum((byte[]) o) + delta;
-                _put(key0, numToBytes(integer, false));
-                return integer(integer);
-            } catch (IllegalArgumentException e) {
-                throw new RedisException(e.getMessage());
-            }
-        } else {
-            throw notInteger();
-        }
-    }
-
-    private BulkReply _change(byte[] key0, double delta) throws RedisException {
-        Object o = _get(key0);
-        if (o == null) {
-            byte[] bytes = _tobytes(delta);
-            _put(key0, bytes);
-            return new BulkReply(bytes);
-        } else if (o instanceof byte[]) {
-            try {
-                double number = _todouble((byte[]) o) + delta;
-                byte[] bytes = _tobytes(number);
-                _put(key0, bytes);
-                return new BulkReply(bytes);
-            } catch (IllegalArgumentException e) {
-                throw new RedisException(e.getMessage());
-            }
-        } else {
-            throw notInteger();
-        }
-    }
-
-    private static int _test(byte[] bytes, long offset) throws RedisException {
-        long div = offset / 8;
-        if (div > MAX_VALUE) throw notInteger();
-        int i;
-        if (bytes.length < div + 1) {
-            i = 0;
-        } else {
-            int mod = (int) (offset % 8);
-            int value = bytes[((int) div)] & 0xFF;
-            i = value & mask[mod];
-        }
-        return i != 0 ? 1 : 0;
-    }
-
-    private byte[] _getbytes(byte[] aKey2) throws RedisException {
-        byte[] src;
-        Object o = _get(aKey2);
-        if (o instanceof byte[]) {
-            src = (byte[]) o;
-        } else if (o != null) {
-            throw invalidValue();
-        } else {
-            src = new byte[0];
-        }
-        return src;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<BytesValue> _getlist(byte[] key0, boolean create) throws RedisException {
-        Object o = _get(key0);
-        if (o instanceof List) {
-            return (List<BytesValue>) o;
-        } else if (o == null) {
-            if (create) {
-                ArrayList<BytesValue> list = new ArrayList<BytesValue>();
-                _put(key0, list);
-                return list;
-            } else {
-                return null;
-            }
-        } else {
-            throw invalidValue();
-        }
-    }
-
-    private Object _put(byte[] key, Object value) {
-        expires.remove(key);
-        return data.put(key, value);
-    }
-
-    private byte[] __put(byte[] key, byte[] value) {
-        try {
-            myexpires.delete(key);
-            mydata.put(key,value);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e.getMessage());
-        }
-
-        return value;
-    }
-
-    private Object _put(byte[] key, byte[] value, long expiration) {
-        try {
-            myexpires.put(key, ObjectToByte(expiration));
-            mydata.put(key, ObjectToByte(value));
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e.getMessage());
-        }
-
-        expires.put(key, expiration);
-        return data.put(key, value);
-    }
 
     private static boolean matches(byte[] key, byte[] pattern, int kp, int pp) {
         if (kp == key.length) {
@@ -312,36 +65,6 @@ public class RocksdbRedisServer implements RedisServer {
     }
 
 
-    private static int _toposint(byte[] offset1) throws RedisException {
-        long offset = bytesToNum(offset1);
-        if (offset < 0 || offset > MAX_VALUE) {
-            throw notInteger();
-        }
-        return (int) offset;
-    }
-
-    private static int _toint(byte[] offset1) throws RedisException {
-        long offset = bytesToNum(offset1);
-        if (offset > MAX_VALUE) {
-            throw notInteger();
-        }
-        return (int) offset;
-    }
-
-    private static int _torange(byte[] offset1, int length) throws RedisException {
-        long offset = bytesToNum(offset1);
-        if (offset > MAX_VALUE) {
-            throw notInteger();
-        }
-        if (offset < 0) {
-            offset = (length + offset);
-        }
-        if (offset >= length) {
-            offset = length - 1;
-        }
-        return (int) offset;
-    }
-
     private static Random r = new SecureRandom();
     private static Field tableField;
     private static Field nextField;
@@ -367,9 +90,7 @@ public class RocksdbRedisServer implements RedisServer {
         return new RedisException("no such key");
     }
 
-    private long now() {
-        return System.currentTimeMillis();
-    }
+
 
     /**
      * Append a value to a key
@@ -381,26 +102,33 @@ public class RocksdbRedisServer implements RedisServer {
      */
     @Override
     public IntegerReply append(byte[] key0, byte[] value1) throws RedisException {
-        //Object o = _get(key0);
-        byte[] o = __get(key0);
-
-        int length1 = value1.length;
-        if (o instanceof byte[]) {
-            byte[] src = (byte[]) o;
-            int length0 = src.length;
-            byte[] bytes = new byte[length0 + length1];
-            System.arraycopy(src, 0, bytes, 0, length0);
-            System.arraycopy(value1, 0, bytes, length0, length1);
-
-            __put(key0, bytes);
-
-            return integer(bytes.length);
-        } else if (o == null) {
-            __put(key0, value1);
-            return integer(length1);
-        } else {
-            throw invalidValue();
+        try {
+            mydata.merge(key0, value1);
+        } catch (RocksDBException e) {
+            throw new RedisException(e.getMessage());
         }
+        return integer(__get(key0).length);
+
+//        //Object o = _get(key0);
+//        byte[] o = __get(key0);
+//
+//        int length1 = value1.length;
+//        if (o instanceof byte[]) {
+//            byte[] src = (byte[]) o;
+//            int length0 = src.length;
+//            byte[] bytes = new byte[length0 + length1];
+//            System.arraycopy(src, 0, bytes, 0, length0);
+//            System.arraycopy(value1, 0, bytes, length0, length1);
+//
+//            __put(key0, bytes);
+//
+//            return integer(bytes.length);
+//        } else if (o == null) {
+//            __put(key0, value1);
+//            return integer(length1);
+//        } else {
+//            throw invalidValue();
+//        }
     }
 
     /**
@@ -1035,16 +763,6 @@ public class RocksdbRedisServer implements RedisServer {
         return integer(data.size());
     }
 
-    private int mydbsize() {
-        final List<byte[]> keys = new ArrayList<>();
-        try (final RocksIterator iterator = mydata.newIterator()) {
-            for (iterator.seekToLast(); iterator.isValid(); iterator.prev()) {
-                keys.add(iterator.key());
-            }
-        }
-        return keys.size();
-    }
-
     /**
      * Get debugging information about a key
      * Server
@@ -1082,29 +800,6 @@ public class RocksdbRedisServer implements RedisServer {
 
         data.clear();
         return OK;
-    }
-
-    private void dbclear() {
-
-        final List<byte[]> keys = new ArrayList<>();
-        try (final RocksIterator iterator = mydata.newIterator()) {
-            for (iterator.seekToLast(); iterator.isValid(); iterator.prev()) {
-                keys.add(iterator.key());
-            }
-        }
-
-        //删除所有数据
-        try (final WriteOptions writeOpt = new WriteOptions()) {
-            try (final WriteBatch batch = new WriteBatch()) {
-                for (byte[] key1 : keys) {
-                    batch.remove(key1);
-                }
-                mydata.write(writeOpt, batch);
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-            }
-        }
-
     }
 
     /**
@@ -1606,37 +1301,6 @@ public class RocksdbRedisServer implements RedisServer {
     }
 
     /**
-     * Delete a key
-     * Generic
-     *
-     * @param key0
-     * @return IntegerReply
-     */
-    @Override
-    public IntegerReply del(byte[][] key0) throws RedisException {
-        int total = 0;
-        for (byte[] bytes : key0) {
-
-            try {
-                mydata.delete(bytes);
-                myexpires.delete(bytes);
-
-                //Object remove = data.remove(bytes);
-
-                //if (remove != null) {
-                    total++;
-                //}
-                //expires.remove(bytes);
-
-            } catch (RocksDBException e) {
-                throw new RedisException(e.getMessage());
-            }
-
-        }
-        return integer(total);
-    }
-
-    /**
      * Return a serialized version of the value stored at the specified key.
      * Generic
      *
@@ -1663,19 +1327,7 @@ public class RocksdbRedisServer implements RedisServer {
         return o ? integer(1) : integer(0);
     }
 
-    private boolean __exists(byte[] key0) throws RedisException {
-//        Object o = _get(key0);
-        StringBuilder sb=new StringBuilder();
-        boolean o = mydata.keyMayExist(key0,sb);
-        return o;
-    }
 
-    private boolean __existsTTL(byte[] key0) throws RedisException {
-//        Object o = _get(key0);
-        StringBuilder sb=new StringBuilder();
-        boolean o = myexpires.keyMayExist(key0,sb);
-        return o;
-    }
 
     /**
      * Set a key's time to live in seconds
@@ -1778,8 +1430,8 @@ public class RocksdbRedisServer implements RedisServer {
             //fixme to byte search
             for (iterator.seek(pattern0); iterator.isValid() && new String(iterator.key()).startsWith(new String(pattern0)); iterator.next()) {
 //            for (iterator.seek(pattern0); iterator.isValid() ; iterator.next()){
-                byte[] key = iterator.key();
-                keys.add(key);
+
+                keys.add(iterator.key());
 
 //                replies.add(new BulkReply(key));
 
@@ -2297,10 +1949,13 @@ public class RocksdbRedisServer implements RedisServer {
      */
     @Override
     public IntegerReply hdel(byte[] key0, byte[][] field1) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
+
+//        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
         int total = 0;
         for (byte[] hkey : field1) {
-            total += hash.remove(hkey) == null ? 0 : 1;
+            _hdel(key0,hkey);
+//            total += hash.remove(hkey) == null ? 0 : 1;
+            total +=  1;
         }
         return integer(total);
     }
@@ -2315,7 +1970,10 @@ public class RocksdbRedisServer implements RedisServer {
      */
     @Override
     public IntegerReply hexists(byte[] key0, byte[] field1) throws RedisException {
-        return _gethash(key0, false).get(field1) == null ? integer(0) : integer(1);
+
+
+//        return _gethash(key0, false).get(field1) == null ? integer(0) : integer(1);
+        return __hexists(key0,field1) ? integer(0) : integer(1);
     }
 
     /**
@@ -2328,7 +1986,8 @@ public class RocksdbRedisServer implements RedisServer {
      */
     @Override
     public BulkReply hget(byte[] key0, byte[] field1) throws RedisException {
-        byte[] bytes = _gethash(key0, false).get(field1);
+//        byte[] bytes = _gethash(key0, false).get(field1);
+        byte[] bytes = __hget(key0, field1);
         if (bytes == null) {
             return NIL_REPLY;
         } else {
@@ -2345,15 +2004,17 @@ public class RocksdbRedisServer implements RedisServer {
      */
     @Override
     public MultiBulkReply hgetall(byte[] key0) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
-        int size = hash.size();
-        Reply[] replies = new Reply[size * 2];
-        int i = 0;
-        for (Map.Entry<Object, byte[]> entry : hash.entrySet()) {
-            replies[i++] = new BulkReply(((BytesKey) entry.getKey()).getBytes());
-            replies[i++] = new BulkReply(entry.getValue());
-        }
-        return new MultiBulkReply(replies);
+//        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
+//        int size = hash.size();
+//        Reply[] replies = new Reply[size * 2];
+//        int i = 0;
+//        for (Map.Entry<Object, byte[]> entry : hash.entrySet()) {
+//            replies[i++] = new BulkReply(((BytesKey) entry.getKey()).getBytes());
+//            replies[i++] = new BulkReply(entry.getValue());
+//        }
+//        return new MultiBulkReply(replies);
+        return __hgetall(key0);
+
     }
 
     /**
@@ -2494,8 +2155,7 @@ public class RocksdbRedisServer implements RedisServer {
      */
     @Override
     public IntegerReply hset(byte[] key0, byte[] field1, byte[] value2) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, true);
-        Object put = hash.put(field1, value2);
+        Object put = __hput(key0,field1,value2);
         return put == null ? integer(1) : integer(0);
     }
 
@@ -2597,23 +2257,6 @@ public class RocksdbRedisServer implements RedisServer {
         return _setreply(set);
     }
 
-    private BytesKeySet _sdiff(byte[][] key0) throws RedisException {
-        BytesKeySet set = null;
-        for (byte[] key : key0) {
-            if (set == null) {
-                set = new BytesKeySet();
-                set.addAll(_getset(key, false));
-            } else {
-                BytesKeySet c = _getset(key, false);
-                set.removeAll(c);
-            }
-        }
-        if (set == null) {
-            throw new RedisException("wrong number of arguments for 'sdiff' command");
-        }
-        return set;
-    }
-
     /**
      * Subtract multiple sets and store the resulting set in a key
      * Set
@@ -2645,28 +2288,6 @@ public class RocksdbRedisServer implements RedisServer {
     public MultiBulkReply sinter(byte[][] key0) throws RedisException {
         BytesKeySet set = _sinter(key0);
         return _setreply(set);
-    }
-
-    private BytesKeySet _sinter(byte[][] key0) throws RedisException {
-        BytesKeySet set = null;
-        for (byte[] key : key0) {
-            if (set == null) {
-                set = _getset(key, false);
-            } else {
-                BytesKeySet inter = new BytesKeySet();
-                BytesKeySet newset = _getset(key, false);
-                for (BytesKey bytesKey : newset) {
-                    if (set.contains(bytesKey)) {
-                        inter.add(bytesKey);
-                    }
-                }
-                set = inter;
-            }
-        }
-        if (set == null) {
-            throw new RedisException("wrong number of arguments for 'sinter' command");
-        }
-        return set;
     }
 
     /**
@@ -2714,15 +2335,6 @@ public class RocksdbRedisServer implements RedisServer {
     public MultiBulkReply smembers(byte[] key0) throws RedisException {
         BytesKeySet set = _getset(key0, false);
         return _setreply(set);
-    }
-
-    private MultiBulkReply _setreply(BytesKeySet set) {
-        Reply[] replies = new Reply[set.size()];
-        int i = 0;
-        for (BytesKey value : set) {
-            replies[i++] = new BulkReply(value.getBytes());
-        }
-        return new MultiBulkReply(replies);
     }
 
     /**
@@ -2847,22 +2459,6 @@ public class RocksdbRedisServer implements RedisServer {
         return _setreply(set);
     }
 
-    private BytesKeySet _sunion(byte[][] key0) throws RedisException {
-        BytesKeySet set = null;
-        for (byte[] key : key0) {
-            if (set == null) {
-                set = new BytesKeySet();
-                set.addAll(_getset(key, false));
-            } else {
-                set.addAll(_getset(key, false));
-            }
-        }
-        if (set == null) {
-            throw new RedisException("wrong number of arguments for 'sunion' command");
-        }
-        return set;
-    }
-
     /**
      * Add multiple sets and store the resulting set in a key
      * Set
@@ -2906,10 +2502,6 @@ public class RocksdbRedisServer implements RedisServer {
             }
         }
         return integer(total);
-    }
-
-    private double _todouble(byte[] score) {
-        return parseDouble(new String(score));
     }
 
     /**
@@ -2994,86 +2586,6 @@ public class RocksdbRedisServer implements RedisServer {
         return _zstore(destination0, numkeys1, key2, "zinterstore", false);
     }
 
-    private IntegerReply _zstore(byte[] destination0, byte[] numkeys1, byte[][] key2, String name, boolean union) throws RedisException {
-        if (destination0 == null || numkeys1 == null) {
-            throw new RedisException("wrong number of arguments for '" + name + "' command");
-        }
-        int numkeys = _toint(numkeys1);
-        if (key2.length < numkeys) {
-            throw new RedisException("wrong number of arguments for '" + name + "' command");
-        }
-        int position = numkeys;
-        double[] weights = null;
-        Aggregate type = null;
-        if (key2.length > position) {
-            if ("weights".equals(new String(key2[position]).toLowerCase())) {
-                position++;
-                if (key2.length < position + numkeys) {
-                    throw new RedisException("wrong number of arguments for '" + name + "' command");
-                }
-                weights = new double[numkeys];
-                for (int i = position; i < position + numkeys; i++) {
-                    weights[i - position] = _todouble(key2[i]);
-                }
-                position += numkeys;
-            }
-            if (key2.length > position + 1) {
-                if ("aggregate".equals(new String(key2[position]).toLowerCase())) {
-                    type = Aggregate.valueOf(new String(key2[position + 1]).toUpperCase());
-                }
-            } else if (key2.length != position) {
-                throw new RedisException("wrong number of arguments for '" + name + "' command");
-            }
-        }
-        del(new byte[][]{destination0});
-        ZSet destination = _getzset(destination0, true);
-        for (int i = 0; i < numkeys; i++) {
-            ZSet zset = _getzset(key2[i], false);
-            if (i == 0) {
-                if (weights == null) {
-                    destination.addAll(zset);
-                } else {
-                    double weight = weights[i];
-                    for (ZSetEntry entry : zset) {
-                        destination.add(entry.getKey(), entry.getScore() * weight);
-                    }
-                }
-            } else {
-                for (ZSetEntry entry : zset) {
-                    BytesKey key = entry.getKey();
-                    ZSetEntry current = destination.get(key);
-                    destination.remove(key);
-                    if (union || current != null) {
-                        double newscore = entry.getScore() * (weights == null ? 1 : weights[i]);
-                        if (type == null || type == Aggregate.SUM) {
-                            if (current != null) {
-                                newscore += current.getScore();
-                            }
-                        } else if (type == Aggregate.MIN) {
-                            if (current != null && newscore > current.getScore()) {
-                                newscore = current.getScore();
-                            }
-                        } else if (type == Aggregate.MAX) {
-                            if (current != null && newscore < current.getScore()) {
-                                newscore = current.getScore();
-                            }
-                        }
-                        destination.add(key, newscore);
-                    }
-                }
-                if (!union) {
-                    for (ZSetEntry entry : new ZSet(destination)) {
-                        BytesKey key = entry.getKey();
-                        if (zset.get(key) == null) {
-                            destination.remove(key);
-                        }
-                    }
-                }
-            }
-        }
-        return integer(destination.size());
-    }
-
     enum Aggregate {SUM, MIN, MAX}
 
     /**
@@ -3114,24 +2626,6 @@ public class RocksdbRedisServer implements RedisServer {
         return new MultiBulkReply(list.toArray(new Reply[list.size()]));
     }
 
-    private boolean _checkcommand(byte[] check, String command, boolean syntax) throws RedisException {
-        boolean result;
-        if (check != null) {
-            if (new String(check).toLowerCase().equals(command)) {
-                result = true;
-            } else {
-                if (syntax) {
-                    throw new RedisException("syntax error");
-                } else {
-                    return false;
-                }
-            }
-        } else {
-            result = false;
-        }
-        return result;
-    }
-
     /**
      * Return a range of members in a sorted set, by score
      * Sorted_set
@@ -3148,62 +2642,6 @@ public class RocksdbRedisServer implements RedisServer {
         if (zset.isEmpty()) return MultiBulkReply.EMPTY;
         List<Reply<ByteBuf>> list = _zrangebyscore(min1, max2, withscores_offset_or_count4, zset, false);
         return new MultiBulkReply(list.toArray(new Reply[list.size()]));
-    }
-
-    private List<Reply<ByteBuf>> _zrangebyscore(byte[] min1, byte[] max2, byte[][] withscores_offset_or_count4, ZSet zset, boolean reverse) throws RedisException {
-        int position = 0;
-        boolean withscores = false;
-        if (withscores_offset_or_count4.length > 0) {
-            withscores = _checkcommand(withscores_offset_or_count4[0], "withscores", false);
-        }
-        if (withscores) position++;
-        boolean limit = false;
-        if (withscores_offset_or_count4.length > position) {
-            limit = _checkcommand(withscores_offset_or_count4[position++], "limit", true);
-        }
-        if (withscores_offset_or_count4.length != position + (limit ? 2 : 0)) {
-            throw new RedisException("syntax error");
-        }
-        int offset = 0;
-        int number = Integer.MAX_VALUE;
-        if (limit) {
-            offset = _toint(withscores_offset_or_count4[position++]);
-            number = _toint(withscores_offset_or_count4[position]);
-            if (offset < 0 || number < 1) {
-                throw notInteger();
-            }
-        }
-        Score min = _toscorerange(min1);
-        Score max = _toscorerange(max2);
-        List<ZSetEntry> entries = zset.subSet(min.value, max.value);
-        if (reverse) Collections.reverse(entries);
-        int current = 0;
-        List<Reply<ByteBuf>> list = new ArrayList<Reply<ByteBuf>>();
-        for (ZSetEntry entry : entries) {
-            if (current >= offset && current < offset + number) {
-                list.add(new BulkReply(entry.getKey().getBytes()));
-                if (withscores) list.add(new BulkReply(_tobytes(entry.getScore())));
-            }
-            current++;
-        }
-        return list;
-    }
-
-    private Score _toscorerange(byte[] specifier) {
-        Score score = new Score();
-        String s = new String(specifier).toLowerCase();
-        if (s.startsWith("(")) {
-            score.inclusive = false;
-            s = s.substring(1);
-        }
-        if (s.equals("-inf")) {
-            score.value = Double.NEGATIVE_INFINITY;
-        } else if (s.equals("inf") || s.equals("+inf")) {
-            score.value = Double.POSITIVE_INFINITY;
-        } else {
-            score.value = Double.parseDouble(s);
-        }
-        return score;
     }
 
     static class Score {
@@ -3379,18 +2817,6 @@ public class RocksdbRedisServer implements RedisServer {
         return _zrank(member1, zset);
     }
 
-    private Reply _zrank(byte[] member1, List<ZSetEntry> zset) {
-        BytesKey member = new BytesKey(member1);
-        int position = 0;
-        for (ZSetEntry entry : zset) {
-            if (entry.getKey().equals(member)) {
-                return integer(position);
-            }
-            position++;
-        }
-        return NIL_REPLY;
-    }
-
     /**
      * Get the score associated with the given member in a sorted set
      * Sorted_set
@@ -3407,9 +2833,7 @@ public class RocksdbRedisServer implements RedisServer {
         return new BulkReply(_tobytes(score));
     }
 
-    private byte[] _tobytes(double score) {
-        return String.valueOf(score).getBytes();
-    }
+
 
     /**
      * Add multiple sorted sets and store the resulting sorted set in a new key
@@ -3426,119 +2850,8 @@ public class RocksdbRedisServer implements RedisServer {
     }
 
 
-    private RocksDB getDb(String filename) {
-//    String filename = env.getRequiredProperty(filename);
-
-        System.out.println("rocks db path:" + filename);
-
-        RocksDB.loadLibrary();
-        // the Options class contains a set of configurable DB options
-        // that determines the behavior of a database.
-        final Options options = new Options();
-
-        final Statistics stats = new Statistics();
 
 
-        try {
-            options.setCreateIfMissing(true)
-                    .setStatistics(stats)
-                    .setWriteBufferSize(8 * SizeUnit.KB)
-                    .setMaxWriteBufferNumber(3)
-                    .setMaxBackgroundCompactions(10)
-                    .setCompressionType(CompressionType.SNAPPY_COMPRESSION)
-                    .setCompactionStyle(CompactionStyle.UNIVERSAL);
-        } catch (final IllegalArgumentException e) {
-            assert (false);
-        }
-
-        final Filter bloomFilter = new BloomFilter(10);
-        final ReadOptions readOptions = new ReadOptions()
-                .setFillCache(false);
-        final RateLimiter rateLimiter = new RateLimiter(10000000, 10000, 10);
-
-        options.setMemTableConfig(
-                new HashSkipListMemTableConfig()
-                        .setHeight(4)
-                        .setBranchingFactor(4)
-                        .setBucketCount(2000000));
-
-        options.setMemTableConfig(
-                new HashLinkedListMemTableConfig()
-                        .setBucketCount(100000));
-        options.setMemTableConfig(
-                new VectorMemTableConfig().setReservedSize(10000));
-
-        options.setMemTableConfig(new SkipListMemTableConfig());
-
-        options.setTableFormatConfig(new PlainTableConfig());
-        // Plain-Table requires mmap read
-        options.setAllowMmapReads(true);
-
-        options.setRateLimiter(rateLimiter);
-
-        final BlockBasedTableConfig table_options = new BlockBasedTableConfig();
-        table_options.setBlockCacheSize(64 * SizeUnit.KB)
-                .setFilter(bloomFilter)
-                .setCacheNumShardBits(6)
-                .setBlockSizeDeviation(5)
-                .setBlockRestartInterval(10)
-                .setCacheIndexAndFilterBlocks(true)
-                .setHashIndexAllowCollision(false)
-                .setBlockCacheCompressedSize(64 * SizeUnit.KB)
-                .setBlockCacheCompressedNumShardBits(10);
-
-        options.setTableFormatConfig(table_options);
-        //options.setCompressionType(CompressionType.SNAPPY_COMPRESSION).setCreateIfMissing(true);
-
-        RocksDB db = null;
-        try {
-            // a factory method that returns a RocksDB instance
-            //String filename = "/Users/moyong/project/env-myopensource/1-spring/12-spring/rocksdb-service/src/main/resources/data";
-            //db = factory.open(new File("example"), options);
-
-            db = RocksDB.open(options, filename);
-            // do something
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-        }
-        return db;
-    }
-
-    public static byte[] ObjectToByte(java.lang.Object obj) {
-        byte[] bytes = null;
-        try {
-            // object to bytearray
-            ByteArrayOutputStream bo = new ByteArrayOutputStream();
-            ObjectOutputStream oo = new ObjectOutputStream(bo);
-            oo.writeObject(obj);
-
-            bytes = bo.toByteArray();
-
-            bo.close();
-            oo.close();
-        } catch (Exception e) {
-            System.out.println("translation" + e.getMessage());
-            e.printStackTrace();
-        }
-        return bytes;
-    }
-
-    public static Object ByteToObject(byte[] bytes) {
-        Object obj = null;
-        try {
-            // bytearray to object
-            ByteArrayInputStream bi = new ByteArrayInputStream(bytes);
-            ObjectInputStream oi = new ObjectInputStream(bi);
-
-            obj = oi.readObject();
-            bi.close();
-            oi.close();
-        } catch (Exception e) {
-            System.out.println("translation" + e.getMessage());
-            e.printStackTrace();
-        }
-        return obj;
-    }
 
 
 }

@@ -62,6 +62,13 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<Command> {
                             try {
                                 //参数处理
                                 command.toArguments(objects, types);
+
+//                                System.out.println(objects.length);
+//                                for (Object obj:objects
+//                                     ) {
+//                                    System.out.println(new String((byte[]) obj));
+//                                }
+
                                 //通过反射执行回调
                                 return (Reply) method.invoke(rs, objects);
 

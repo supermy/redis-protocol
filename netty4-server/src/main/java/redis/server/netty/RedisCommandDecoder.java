@@ -50,6 +50,10 @@ public class RedisCommandDecoder extends ReplayingDecoder<Void> {
                 }
             }
             try {
+//                for (byte[] byt:bytes
+//                     ) {
+//                    System.out.println(new String(byt));
+//                }
                 out.add(new Command(bytes));
             } finally {
                 //命令恢复到初始状态
