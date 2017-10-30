@@ -1,7 +1,6 @@
 package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import org.rocksdb.*;
 import redis.netty4.*;
 import redis.util.*;
@@ -1412,7 +1411,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
             throw new RedisException("wrong number of arguments for KEYS");
         }
 
-        List<byte[]> bytes = __keys(pattern0);
+        List<byte[]> bytes = __keys(mydata,pattern0);
 
         List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
         for (byte[] bt:bytes
@@ -1909,7 +1908,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 //        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
         int total = 0;
         for (byte[] hkey : field1) {
-            _hdel(key0,hkey);
+            __hdel(key0,hkey);
 //            total += hash.remove(hkey) == null ? 0 : 1;
             total +=  1;
         }

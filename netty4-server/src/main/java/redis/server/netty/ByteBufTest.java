@@ -11,6 +11,8 @@ import java.util.Iterator;
 
 /**
  * 主键的设计
+ * ByteBuf 的练习
+ *
  * Created by moyong on 2017/10/20.
  */
 public class ByteBufTest {

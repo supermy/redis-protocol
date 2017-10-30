@@ -12,6 +12,31 @@
 
   <dependencies>
 
+
+
+    <!-- https://mvnrepository.com/artifact/com.esotericsoftware/reflectasm -->
+    <dependency>
+      <groupId>com.esotericsoftware</groupId>
+      <artifactId>reflectasm</artifactId>
+      <version>1.11.3</version>
+    </dependency>
+    <!---->
+
+    <!-- https://mvnrepository.com/artifact/com.googlecode/reflectasm -->
+    <!--<dependency>-->
+      <!--<groupId>com.googlecode</groupId>-->
+      <!--<artifactId>reflectasm</artifactId>-->
+      <!--<version>1.01</version>-->
+    <!--</dependency>-->
+
+    <!-- https://mvnrepository.com/artifact/commons-beanutils/commons-beanutils -->
+    <dependency>
+      <groupId>commons-beanutils</groupId>
+      <artifactId>commons-beanutils</artifactId>
+      <version>1.9.3</version>
+    </dependency>
+
+
     <dependency>
       <groupId>org.rocksdb</groupId>
       <artifactId>rocksdbjni</artifactId>
@@ -28,6 +53,11 @@
       <groupId>com.github.spullara.redis</groupId>
       <artifactId>protocol</artifactId>
       <version>0.8-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>RELEASE</version>
     </dependency>
   </dependencies>
 

@@ -13,6 +13,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by moyong on 2017/10/22.
+ *
+ * 多线程 批量读取
+ *
+ * SkipList 模型下
+ * 批量写 32w/sec
+ * 批量读 8w/sec
+ *
  */
 public class TestRocksDb {
 
@@ -41,11 +48,14 @@ public class TestRocksDb {
 
         options.setMemTableConfig(new SkipListMemTableConfig());
 
-
         final RocksDB db = RocksDB.open(options, "netty4-server/db/data");
+
+
 
         System.out.println( new String(db.get("0x1".getBytes())));
         System.out.println( new String(db.get("5x1".getBytes())));
+
+
 
         testPut(db);
         final String str1 = db.getProperty("rocksdb.stats");
@@ -63,6 +73,10 @@ public class TestRocksDb {
 
     }
 
+    /**
+     * 引入批量数据处理
+     * @param db
+     */
     private static void testPut(final RocksDB db) {
         long start = System.currentTimeMillis();
 
@@ -88,7 +102,7 @@ public class TestRocksDb {
                                     batch.put(String.format("%dx%d", j, k).getBytes(),
                                             String.format("%d", j * k).getBytes());
                                 }
-                                db.write(writeOpt, batch);
+                                db.write(writeOpt, batch); //批量数据存储
 
 //                                byte[] key1 = String.format("%dx%d", j, 1).getBytes();
 //                                byte[] val = db.get(key1);
@@ -139,6 +153,10 @@ public class TestRocksDb {
         System.out.println("处理" + (atomicInteger.intValue() / ((end - start) / 1000)) + "条记录/秒");
     }
 
+    /**
+     * 引入批量数据读取
+     * @param db
+     */
     private static void testGet(final RocksDB db) {
         long start = System.currentTimeMillis();
 
@@ -175,12 +193,13 @@ public class TestRocksDb {
 
                             Map<byte[], byte[]> values = null;
                             try {
-                                values = db.multiGet(list);
+                                values = db.multiGet(list); //批量数据读取
+
                                 for (byte[] bt:values.values()
                                      ) {
-                                    System.out.println(new String(bt));
-
+//                                    System.out.println(new String(bt));
                                 }
+
                             } catch (RocksDBException e) {
                                 e.printStackTrace();
                             }
