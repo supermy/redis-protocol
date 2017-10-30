@@ -29,6 +29,7 @@ public class RedisCommandDecoder extends ReplayingDecoder<Void> {
                 if (in.readByte() == '$') {
                     //获取参数的长度
                     long l = readLong(in);
+
                     if (l > Integer.MAX_VALUE) {
                         throw new IllegalArgumentException("Java only supports arrays up to " + Integer.MAX_VALUE + " in size");
                     }

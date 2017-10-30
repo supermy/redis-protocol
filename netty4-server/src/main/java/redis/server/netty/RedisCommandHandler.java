@@ -1,5 +1,9 @@
 package redis.server.netty;
 
+import com.esotericsoftware.reflectasm.MethodAccess;
+//import com.google.common.base.Charsets;
+//import com.google.common.base.Charsets;
+//import com.google.common.collect.Maps;
 import com.google.common.base.Charsets;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -14,8 +18,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
+//import java.util.HashMap;
+//import java.util.Map;
 
 import static redis.netty4.ErrorReply.NYI_REPLY;
+import static redis.netty4.StatusReply.OK;
 import static redis.netty4.StatusReply.QUIT;
 
 /**
@@ -26,6 +33,7 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<Command> {
 
     //定义 Map,key 为命令字节,值为可执行回调的类
     private Map<BytesKey, Wrapper> methods = new HashMap<BytesKey, Wrapper>();
+//    private Map<BytesKey, Wrapper> methods = Maps.newHashMap();
 
     /**
      * 执行回调接口
@@ -46,6 +54,7 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<Command> {
     public RedisCommandHandler(final RedisServer rs) {
 
         Class<? extends RedisServer> aClass = rs.getClass();
+        final MethodAccess methodAccess = MethodAccess.get(rs.getClass());
 
         //获取所有的方法
         for (final Method method : aClass.getMethods()) {
@@ -70,16 +79,18 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<Command> {
 //                                }
 
                                 //通过反射执行回调
-                                return (Reply) method.invoke(rs, objects);
+                                return (Reply) methodAccess.invoke(rs, method.getName(),objects);
 
-                            } catch (IllegalAccessException e) {
-                                throw new RedisException("Invalid server implementation");
-                            } catch (InvocationTargetException e) {
-                                Throwable te = e.getTargetException();
-                                if (!(te instanceof RedisException)) {
-                                    te.printStackTrace();
-                                }
-                                return new ErrorReply("ERR " + te.getMessage());
+//                                return (Reply) method.invoke(rs, objects);
+
+//                            } catch (IllegalAccessException e) {
+//                                throw new RedisException("Invalid server implementation");
+//                            } catch (InvocationTargetException e) {
+//                                Throwable te = e.getTargetException();
+//                                if (!(te instanceof RedisException)) {
+//                                    te.printStackTrace();
+//                                }
+//                                return new ErrorReply("ERR " + te.getMessage());
                             } catch (Exception e) {
                                 return new ErrorReply("ERR " + e.getMessage());
                             }
@@ -97,6 +108,11 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<Command> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Command msg) throws Exception {
+        //后台什么也不做，测试效率 set
+//        ctx.write(OK);
+////
+//////        ctx.executor().execute();
+
         //获取指令，将大写转小写
         byte[] name = msg.getName();
         for (int i = 0; i < name.length; i++) {
@@ -106,15 +122,18 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<Command> {
             }
         }
 
-        //获取指令,取出执行指令
+        //获取指令,取出执行指令 ************
         Wrapper wrapper = methods.get(new BytesKey(name));
+
         Reply reply;
         //是否有效指令
         if (wrapper == null) {
             reply = new ErrorReply("unknown command '" + new String(name, Charsets.US_ASCII) + "'");
         } else {
+
             //执行指令,传入数据 msg 是字节序列化的执行命令
             reply = wrapper.execute(msg);
+
         }
 
         //退出
@@ -122,7 +141,7 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<Command> {
             ctx.close();
         } else {
 
-            //Redis 老协议
+            //Redis inline 协议
             if (msg.isInline()) {
                 if (reply == null) {
                     reply = new InlineReply(null);

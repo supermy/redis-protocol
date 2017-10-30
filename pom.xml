@@ -16,6 +16,7 @@
     <module>netty4-client</module>
     <module>netty4-server</module>
   </modules>
+
   <packaging>pom</packaging>
 
   <name>redis</name>
@@ -69,10 +70,17 @@
 
   <dependencies>
     <!-- Guava -->
+    <!--<dependency>-->
+      <!--<groupId>com.google.guava</groupId>-->
+      <!--<artifactId>guava</artifactId>-->
+      <!--<version>13.0.1</version>-->
+    <!--</dependency>-->
+
+
     <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava</artifactId>
-      <version>13.0.1</version>
+    <groupId>com.google.guava</groupId>
+    <artifactId>guava</artifactId>
+    <version>23.2-jre</version>
     </dependency>
 
     <!-- CLI -->
@@ -98,8 +106,8 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>2.5.1</version>
         <configuration>
-          <source>1.7</source>
-          <target>1.7</target>
+          <source>1.8</source>
+          <target>1.8</target>
           <encoding>UTF-8</encoding>
         </configuration>
       </plugin>

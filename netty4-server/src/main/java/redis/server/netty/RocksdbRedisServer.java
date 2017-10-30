@@ -1,6 +1,7 @@
 package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.rocksdb.*;
 import redis.netty4.*;
 import redis.util.*;
@@ -70,6 +71,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     private static Field nextField;
     private static Field mapField;
 
+    //jdk1.8 影响 spop srandmember 指令；
     static {
         try {
             //必须是 jdk1.7  ,jdk1.8不兼容
@@ -261,13 +263,20 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     public BulkReply get(byte[] key0) throws RedisException {
         byte[] o =  __get(key0);
 
-        if (o instanceof byte[]) {
-            return new BulkReply(o);
-        }
+//        if (o instanceof byte[]) {
+//            return new BulkReply(o);
+//        }
+//        if (o == null) {
+//            return NIL_REPLY;
+//        } else {
+//            throw invalidValue();
+//        }
+
+
         if (o == null) {
             return NIL_REPLY;
         } else {
-            throw invalidValue();
+            return new BulkReply(o);
         }
     }
 
@@ -352,7 +361,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply incr(byte[] key0) throws RedisException {
-        return _change(key0, 1);
+        return __change(key0, 1);
     }
 
     /**
@@ -365,7 +374,8 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply incrby(byte[] key0, byte[] increment1) throws RedisException {
-        return _change(key0, bytesToNum(increment1));
+//        return _change(key0, bytesToNum(increment1));
+        return __change(key0, increment1);
     }
 
     /**
@@ -1397,79 +1407,23 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public MultiBulkReply keys(byte[] pattern0) throws RedisException {
+
         if (pattern0 == null) {
             throw new RedisException("wrong number of arguments for KEYS");
         }
 
-//
+        List<byte[]> bytes = __keys(pattern0);
+
         List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
-//        Iterator<Object> it = data.keySet().iterator();
-//        while (it.hasNext()) {
-//            BytesKey key = (BytesKey) it.next();
-//            byte[] bytes = key.getBytes();
-//            boolean expired = false;
-//            //数据是否过期
-//            Long l = expires.get(key);
-//            if (l != null) {
-//                if (l < now()) {
-//                    expired = true;
-//                    it.remove();
-//                }
-//            }
-//            if (matches(bytes, pattern0, 0, 0) && !expired) {
-//                replies.add(new BulkReply(bytes));
-//            }
-//        }
-
-
-
-        //按 key 检索所有数据
-        List<byte[]> keys = new ArrayList<>();
-        try (final RocksIterator iterator = mydata.newIterator()) {
-            //iterator.seek("a".getBytes());  iterator.seekToLast()
-            //fixme to byte search
-            for (iterator.seek(pattern0); iterator.isValid() && new String(iterator.key()).startsWith(new String(pattern0)); iterator.next()) {
-//            for (iterator.seek(pattern0); iterator.isValid() ; iterator.next()){
-
-                keys.add(iterator.key());
-
-//                replies.add(new BulkReply(key));
-
-                if (keys.size() >= 10000) {
-                    //数据大于1万条直接退出
-                    break;
-                }
-            }
+        for (byte[] bt:bytes
+             ) {
+            replies.add(new BulkReply(bt));
         }
-
-        //检索过期数据,处理过期数据
-        try (final WriteOptions writeOpt = new WriteOptions()) {
-            try (final WriteBatch batch = new WriteBatch()) {
-                for (byte[] key1 : keys) {
-                    byte[] bytes = myexpires.get(key1);
-
-                    if(bytes!=null){
-                        long l = bytesToNum(bytes);
-                        if (l < now()) {
-                            batch.remove(key1);
-//                            keys.remove(key1);
-                        }else
-                            replies.add(new BulkReply(key1));
-                    }else
-                        replies.add(new BulkReply(key1));
-                }
-                mydata.write(writeOpt, batch);
-                myexpires.write(writeOpt, batch);
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-            }
-        }
-
-
-
 
         return new MultiBulkReply(replies.toArray(new Reply[replies.size()]));
     }
+
+
 
     /**
      * Atomically transfer a key from a Redis instance to another one.
@@ -1676,7 +1630,9 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
         Map.Entry current = entry;
         do {
             entries++;
+
             current = (Map.Entry) nextField.get(current);
+
         } while (current != null);
         int choose = r.nextInt(entries);
         current = entry;
@@ -2028,6 +1984,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply hincrby(byte[] key0, byte[] field1, byte[] increment2) throws RedisException {
+
         BytesKeyObjectMap<byte[]> hash = _gethash(key0, true);
         byte[] field = hash.get(field1);
         int increment = _toint(increment2);
@@ -2040,6 +1997,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
             hash.put(field1, numToBytes(value, false));
             return new IntegerReply(value);
         }
+
     }
 
     /**
@@ -2077,14 +2035,25 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public MultiBulkReply hkeys(byte[] key0) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
-        int size = hash.size();
-        Reply[] replies = new Reply[size];
-        int i = 0;
-        for (Object hkey : hash.keySet()) {
-            replies[i++] = new BulkReply(((BytesKey) hkey).getBytes());
+//        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
+
+        List<byte[]> bytes = __hkeys(key0);
+
+        List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
+        for (byte[] bt:bytes
+                ) {
+            replies.add(new BulkReply(bt));
         }
-        return new MultiBulkReply(replies);
+
+        return new MultiBulkReply(replies.toArray(new Reply[replies.size()]));
+//
+//        int size = hash.size();
+//        Reply[] replies = new Reply[size];
+//        int i = 0;
+//        for (Object hkey : hash.keySet()) {
+//            replies[i++] = new BulkReply(((BytesKey) hkey).getBytes());
+//        }
+//        return new MultiBulkReply(replies);
     }
 
     /**
@@ -2096,8 +2065,8 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply hlen(byte[] key0) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
-        return integer(hash.size());
+
+        return __hlen(key0);
     }
 
     /**
@@ -2110,18 +2079,10 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public MultiBulkReply hmget(byte[] key0, byte[][] field1) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
-        int length = field1.length;
-        Reply[] replies = new Reply[length];
-        for (int i = 0; i < length; i++) {
-            byte[] bytes = hash.get(field1[i]);
-            if (bytes == null) {
-                replies[i] = NIL_REPLY;
-            } else {
-                replies[i] = new BulkReply(bytes);
-            }
-        }
-        return new MultiBulkReply(replies);
+
+        List<BulkReply> list = __hmget(key0, field1);
+        return new MultiBulkReply(list.toArray(new BulkReply[list.size()]));
+
     }
 
     /**
@@ -2134,13 +2095,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public StatusReply hmset(byte[] key0, byte[][] field_or_value1) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, true);
-        if (field_or_value1.length % 2 != 0) {
-            throw new RedisException("wrong number of arguments for HMSET");
-        }
-        for (int i = 0; i < field_or_value1.length; i += 2) {
-            hash.put(field_or_value1[i], field_or_value1[i + 1]);
-        }
+        __hmput(key0,field_or_value1);
         return OK;
     }
 
@@ -2170,14 +2125,19 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply hsetnx(byte[] key0, byte[] field1, byte[] value2) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, true);
-        byte[] bytes = hash.get(field1);
-        if (bytes == null) {
-            hash.put(field1, value2);
-            return integer(1);
-        } else {
-            return integer(0);
-        }
+
+       return  __hputnx(key0,field1,value2);
+
+//        BytesKeyObjectMap<byte[]> hash = _gethash(key0, true);
+//
+//        byte[] bytes = hash.get(field1);
+//        if (bytes == null) {
+//            hash.put(field1, value2);
+//            return integer(1);
+//        } else {
+//            return integer(0);
+//        }
+
     }
 
     /**
