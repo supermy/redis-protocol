@@ -34,6 +34,9 @@ import static redis.util.Encoding.numToBytes;
  * __hdel __reduHMeta
  * __hexists
  * __hputnx
+ *
+ * __change（incr）
+ *
  * 批量指令 __hmset(RocksDb 批量操作) __hmget(mget 批量获取)  __hgetall(批量seek)
  * </p>
  * Created by moyong on 2017/10/20.
@@ -80,9 +83,17 @@ public class RocksdbRedis extends RedisBase {
 
         for (byte[] fd:fields
              ) {
-            byte[] fkey = _genkey(fkpre, key, fd);
+            byte[] fkey = __genkey(fkpre, key,"|".getBytes(), fd);
             listFds.add(fkey);
         }
+
+        list = __mget(listFds);
+
+        return list;
+    }
+
+    protected List<BulkReply> __mget(List<byte[]> listFds) throws RedisException {
+        List<BulkReply> list = new ArrayList<BulkReply>();
 
         try {
             Map<byte[], byte[]> fvals = mydata.multiGet(listFds);
@@ -99,11 +110,8 @@ public class RocksdbRedis extends RedisBase {
             e.printStackTrace();
             throw new RuntimeException(e.getMessage());
         }
-
         return list;
     }
-
-
 
 
     protected void __hmput(byte[] key, byte[][] field_or_value1) throws RedisException {
@@ -112,28 +120,41 @@ public class RocksdbRedis extends RedisBase {
             throw new RedisException("wrong number of arguments for HMSET");
         }
 
+        //处理 field key
+        for (int i = 0; i < field_or_value1.length; i += 2) {
+            byte[][] keys = _genhkey(key, field_or_value1[i]);
+            field_or_value1[i] = keys[1];
+        }
+
+        __mput(field_or_value1);
 
 
+    }
+
+    protected void __mput(byte[][] field_or_value1) {
         final WriteOptions writeOpt = new WriteOptions();
         final WriteBatch batch = new WriteBatch();
         for (int i = 0; i < field_or_value1.length; i += 2) {
 
-            byte[][] keys = _genhkey(key, field_or_value1[i]);
+//            byte[][] keys = _genhkey(key, field_or_value1[i]);
+
             byte[] val = __genVal(field_or_value1[i + 1], -1);
 
-            batch.put(keys[1],val);
+//            batch.put(keys[1],val);
+            batch.put(field_or_value1[i],val);
 
-            executorService.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        __incrHMeta(keys,1); //fixme 异步
-                    } catch (RedisException e) {
-                        e.printStackTrace();
-                    }
-//            __hput(key, field_or_value1[i], field_or_value1[i + 1]);
-                }
-            });
+            //fixme  通过 keys 获取数量
+//            executorService.execute(new Runnable() {
+//                @Override
+//                public void run() {
+//                    try {
+//                        __incrHMeta(keys,1); //fixme 异步
+//                    } catch (RedisException e) {
+//                        e.printStackTrace();
+//                    }
+////            __hput(key, field_or_value1[i], field_or_value1[i + 1]);
+//                }
+//            });
 
 
         }
@@ -144,8 +165,6 @@ public class RocksdbRedis extends RedisBase {
         } catch (RocksDBException e) {
             throw new RuntimeException(e.getMessage());
         }
-
-
     }
 
 
@@ -155,10 +174,12 @@ public class RocksdbRedis extends RedisBase {
         byte[] hksuf = "hash".getBytes();
         byte[] fkpre = "_h".getBytes();
 
-        byte[] hkey = _genkey(hkpre, key0, hksuf);
-        int i = _toint(__get(hkey));
+        byte[] hkey = __genkey(hkpre, key0, hksuf);
 
-        return integer(i);
+        return integer(__hkeys(hkey).size());
+
+//        int i = _toint(__get(hkey));
+//        return integer(i);
     }
 
     protected BulkReply _change(byte[] key0, double delta) throws RedisException {
@@ -190,7 +211,7 @@ public class RocksdbRedis extends RedisBase {
 
 
     /**
-     * 自动增加
+     * 自动增加;字符串形式保存
      *
      * @param key0
      * @param delta
@@ -201,27 +222,29 @@ public class RocksdbRedis extends RedisBase {
 //          __get(key0);
 
         //hash meta count +1
-        ByteBuf hval = Unpooled.buffer(8);
+//        ByteBuf hval = Unpooled.buffer(8);
 
-        //如果 field-key 不存在 不计数
+
         byte[] fbytes = __get(key0);
         if (fbytes != null) {
 
-            hval.writeBytes(fbytes);
+            long integer = bytesToNum((fbytes)) + delta;
+//            hval.writeBytes(fbytes);
 
-            long count = hval.readLong() + delta;
-            hval.clear();
-            hval.writeLong(count);
+//            long count = hval.readLong() + delta;
+//            hval.clear();
+//            hval.writeLong(count);
 
-            System.out.println(delta + " count +:" + count);
+//            System.out.println(delta + " count +:" + count);
 
-            __put(key0, hval.readBytes(hval.readableBytes()).array()); //key count +1
-            return integer(count);
+            __put(key0, numToBytes(integer, false)); //key count +1
+            return integer(integer);
         }
 
-        hval.writeLong(delta);
+        //如果 field-key 不存在 不计数
+//        hval.writeLong(delta);
 
-        __put(key0, hval.readBytes(hval.readableBytes()).array()); //key count +1
+        __put(key0, numToBytes(delta, false)); //key count +1
 
         return integer(delta);
 //        throw notInteger();
@@ -258,7 +281,7 @@ public class RocksdbRedis extends RedisBase {
         byte[] fkpre = "_h".getBytes();
 
         //hash field key pre
-        byte[] fkeypre = _genkey(fkpre, key, null);
+        byte[] fkeypre = __genkey(fkpre, key,"|".getBytes());
 
         List<byte[]> keys = new ArrayList<>();
 
@@ -268,7 +291,7 @@ public class RocksdbRedis extends RedisBase {
                 ) {
 
             ByteBuf hkeybuf1 = Unpooled.wrappedBuffer(bt); //优化 零拷贝
-            ByteBuf slice = hkeybuf1.slice(2 + key.length, bt.length - 2 - key.length);
+            ByteBuf slice = hkeybuf1.slice(3 + key.length, bt.length - 3 - key.length);
 
             byte[] btv = slice.readBytes(slice.readableBytes()).array();
 
@@ -374,21 +397,29 @@ public class RocksdbRedis extends RedisBase {
         byte[] fkpre = "_h".getBytes();
 
         //hash field key pre
-        byte[] fkeypre = _genkey(fkpre, key, null);
+        byte[] fkeypre = __genkey(fkpre, key,"|".getBytes());
 
         //检索所有的 hash field key  所有的 key 都是有序的
         List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
 
 
         List<byte[]> keyVals = __keyVals(mydata, fkeypre);//顺序读取 ;field 过期逻辑复杂，暂不处理
+
+
         int i=0;
         for (byte[] bt:keyVals
              ) {
             if( i%2 == 0){  //key 处理
                 ByteBuf hkeybuf1 = Unpooled.wrappedBuffer(bt); //优化 零拷贝
-                ByteBuf slice = hkeybuf1.slice(2 + key.length, bt.length - 2 - key.length);
+
+                ByteBuf slice = hkeybuf1.slice(3 + key.length, bt.length - 3 - key.length);
+
                 replies.add(new BulkReply(slice.readBytes(slice.readableBytes()).array()));
-            }else replies.add(new BulkReply(bt));
+            }else {
+
+                replies.add(new BulkReply(bt));
+            }
+            i++;
         }
 
 //        try (final RocksIterator iterator = mydata.newIterator()) {
@@ -788,6 +819,8 @@ public class RocksdbRedis extends RedisBase {
     /**
      * 构建 hashkey
      *
+     * 相似 hash (key+filed) 在 seek 的时候会出现混淆
+     *
      * @param keys
      * @param key
      * @param field
@@ -799,8 +832,8 @@ public class RocksdbRedis extends RedisBase {
         byte[] hksuf = "hash".getBytes();
         byte[] fkpre = "_h".getBytes();
 
-        byte[] hkey = _genkey(hkpre, key, hksuf);
-        byte[] fkey = _genkey(fkpre, key, field);
+        byte[] hkey = __genkey(hkpre, key, hksuf);
+        byte[] fkey = __genkey(fkpre, key,"|".getBytes() ,field);
 
         keys[0] = hkey;
         keys[1] = fkey;
@@ -808,44 +841,59 @@ public class RocksdbRedis extends RedisBase {
         return keys;
     }
 
+//    /**
+//     * 组装 key
+//     *
+//     * @param hkpre
+//     * @param key
+//     * @param hksuf
+//     */
+//    private byte[] _genkey(byte[] hkpre, byte[] key, byte[] hksuf) {
+//
+//        return __genkey(hkpre,key,hksuf);
+//
+////
+//////        ByteBuf buf1 = Unpooled.buffer(16);
+//////        buf1.writeBytes(hkpre);
+//////        buf1.writeBytes(key);
+////
+////        ByteBuf buf1 = Unpooled.wrappedBuffer(hkpre, key);  //优化，零拷贝
+////
+////        if (hksuf != null) {
+////
+////
+////            ByteBuf buf2 = Unpooled.wrappedBuffer(hksuf);
+//////            buf1.writeBytes(hksuf);
+////            ByteBuf buf3 = Unpooled.wrappedBuffer(buf1, buf2);
+////            buf3.resetReaderIndex();
+////            byte[] array = buf3.readBytes(buf3.readableBytes()).array();
+////
+////            System.out.println(String.format("buf3组合键为 %s", new String(array)));
+////            return array;
+////
+////        } else {
+////            byte[] array = buf1.readBytes(buf1.readableBytes()).array();
+////
+////            System.out.println(String.format("buf1组合键为 %s", new String(array)));
+////            return array;
+////        }
+//
+//
+//    }
+
     /**
-     * 组装 key
-     *
-     * @param hkpre
-     * @param key
-     * @param hksuf
+     * 组合key 不允许为null
+     * @param keys
+     * @return
      */
-    private byte[] _genkey(byte[] hkpre, byte[] key, byte[] hksuf) {
-
-
-//        ByteBuf buf1 = Unpooled.buffer(16);
-//        buf1.writeBytes(hkpre);
-//        buf1.writeBytes(key);
-
-        ByteBuf buf1 = Unpooled.wrappedBuffer(hkpre, key);  //优化，零拷贝
-
-        if (hksuf != null) {
-            ByteBuf buf2 = Unpooled.wrappedBuffer(hksuf);
-//            buf1.writeBytes(hksuf);
-            ByteBuf buf3 = Unpooled.wrappedBuffer(buf1, buf2);
-            buf3.resetReaderIndex();
-            byte[] array = buf3.readBytes(buf3.readableBytes()).array();
-
-            System.out.println(String.format("buf3组合键为 %s", new String(array)));
-            return array;
-
-        } else {
-            byte[] array = buf1.readBytes(buf1.readableBytes()).array();
-
-            System.out.println(String.format("buf1组合键为 %s", new String(array)));
-            return array;
-        }
-
-
+    protected byte[] __genkey(byte[]... keys) {
+        ByteBuf buf3 = Unpooled.wrappedBuffer(keys);
+        byte[] array = buf3.readBytes(buf3.readableBytes()).array();
+        System.out.println(String.format("buf3组合键为 %s", new String(array)));
+        return array;
     }
 
-
-    ///////////////////////////
+        ///////////////////////////
     protected static int _toposint(byte[] offset1) throws RedisException {
         long offset = bytesToNum(offset1);
         if (offset < 0 || offset > MAX_VALUE) {
