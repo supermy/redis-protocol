@@ -34,6 +34,8 @@ public class TestRocksDb {
         //get ops 46202.18 requests per second
         //set ops 25489.40 requests per second
         Options options = new Options();
+        final BlockBasedTableConfig table_options = new BlockBasedTableConfig();
+        final Filter bloomFilter = new BloomFilter(10);
 
         try {
             options.setCreateIfMissing(true)
@@ -42,9 +44,22 @@ public class TestRocksDb {
                     .setMaxBackgroundCompactions(2)
                     .setCompressionType(CompressionType.SNAPPY_COMPRESSION)
                     .setCompactionStyle(CompactionStyle.UNIVERSAL);
+
+            //对于读取性能影响很大
+//                    table_options.setBlockCacheSize(64 * SizeUnit.KB)
+//                    .setFilter(bloomFilter)
+//                    .setCacheNumShardBits(6)
+//                    .setBlockSizeDeviation(5)
+//                    .setBlockRestartInterval(10)
+//                    .setCacheIndexAndFilterBlocks(true)
+//                    .setHashIndexAllowCollision(false)
+//                    .setBlockCacheCompressedSize(64 * SizeUnit.KB)
+//                    .setBlockCacheCompressedNumShardBits(10);
+
         } catch (final IllegalArgumentException e) {
             assert (false);
         }
+//        options.setTableFormatConfig(table_options);
 
         options.setMemTableConfig(new SkipListMemTableConfig());
 

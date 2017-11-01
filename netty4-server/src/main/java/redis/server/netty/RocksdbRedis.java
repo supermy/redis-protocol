@@ -44,6 +44,553 @@ import static redis.util.Encoding.numToBytes;
 public class RocksdbRedis extends RedisBase {
 
     /**
+     *
+     * Redis Lrem 根据参数 COUNT 的值，移除列表中与参数 VALUE 相等的元素。
+     COUNT 的值可以是以下几种：
+     count > 0 : 从表头开始向表尾搜索，移除与 VALUE 相等的元素，数量为 COUNT 。
+     count < 0 : 从表尾开始向表头搜索，移除与 VALUE 相等的元素，数量为 COUNT 的绝对值。
+     count = 0 : 移除表中所有与 VALUE 相等的值。
+     *
+     * @param key0
+     * @param count1
+     * @param value2
+     * @return
+     * @throws RedisException
+     */
+    protected IntegerReply __lrem(byte[] key0, byte[] count1, byte[] value2) throws RedisException {
+
+        //初始化List 开始于结束指针
+        long metaStart = 0;
+        long metaEnd = 0;
+        //获取元数据的索引值
+        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
+        byte[] valMeta = __get(mymeta, keyMeta); //'0,2'  开始指针，结束指针
+
+        ByteBuf metaBuf = null;
+        ByteBuf startBuf = null;
+        ByteBuf endBuf = null;
+
+        if(valMeta == null){
+            System.out.println("===============2");
+
+            return integer(0);
+
+        }else{
+            System.out.println("===============3");
+
+            metaBuf = Unpooled.wrappedBuffer(valMeta);
+
+            startBuf=metaBuf.slice(0,8);
+            endBuf=metaBuf.slice(8,8);
+
+            metaStart = metaBuf.readLong();
+            metaEnd = metaBuf.readLong();
+
+            //数据列表为空，清除元数据
+            if((metaStart-metaEnd) == 0){
+                __del(keyMeta);
+                return integer(0);
+            }
+
+            metaBuf.resetReaderIndex();
+            metaBuf.resetWriterIndex();
+        }
+
+        System.out.println("当前数据===============4 start:"+metaStart);
+        System.out.println("当前数据===============4 end:"+metaEnd);
+
+
+
+        int count = _toint(count1);
+        int delCnt = 0;
+        if(count == 0 || count >0){
+            // count > 0 : 从表头开始向表尾搜索，移除与 VALUE 相等的元素，数量为 COUNT 。
+            // count = 0 : 移除表中所有与 VALUE 相等的值。
+
+            //获取范围内的元素;不删除原有数据
+            for (long i = metaStart; i <=metaEnd; i++) {
+
+                //生成获取头部元素的 key
+                byte[] keyPre = __genkey("_l".getBytes(), key0, "#".getBytes());
+                ByteBuf keyPreBuf = Unpooled.wrappedBuffer(keyPre);
+                //遍历元素 key
+                startBuf.resetWriterIndex();
+                startBuf.writeLong(i);
+
+                System.out.println("当前数据===============5 i:"+i);
+
+                ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf,startBuf);
+                byte[] array = keyBuf.readBytes(keyBuf.readableBytes()).array();
+                System.out.println("===============5"+new String(array));
+
+                //获取数据
+                byte[] vals = __get(array);
+
+                if(Arrays.equals(vals,value2)){
+                    __del(array);
+                    delCnt++;
+                }
+
+                if(count>0 && delCnt > count){
+                    break;
+                }
+
+
+            }
+
+        }
+
+        if(count < 0){ //count < 0 : 从表尾开始向表头搜索，移除与 VALUE 相等的元素，数量为 COUNT 的绝对值。
+
+            //获取范围内的元素;不删除原有数据
+            for (long i = metaEnd; i <=metaStart; i--) {
+
+                //生成获取头部元素的 key
+                byte[] keyPre = __genkey("_l".getBytes(), key0, "#".getBytes());
+                ByteBuf keyPreBuf = Unpooled.wrappedBuffer(keyPre);
+                //遍历元素 key
+                startBuf.resetWriterIndex();
+                startBuf.writeLong(i);
+
+                System.out.println("当前数据===============5 i:"+i);
+
+                ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf,startBuf);
+                byte[] array = keyBuf.readBytes(keyBuf.readableBytes()).array();
+                System.out.println("===============5"+new String(array));
+
+                //获取数据
+                byte[] vals = __get(array);
+
+                if(Arrays.equals(vals,value2)){
+                    __del(array);
+                    delCnt++;
+                }
+
+                if(delCnt >= count){
+                    break;
+                }
+
+            }
+        }
+        return integer(delCnt);
+
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null) {
+//            return integer(0);
+//        } else {
+//            int count = _toint(count1);
+//            BytesKey value = new BytesKey(value2);
+//            int size = list.size();
+//            int dir = 1;
+//            int s = 0;
+//            int e = size;
+//            int rem = 0;
+//            boolean all = count == 0;
+//            if (count < 0) {
+//                count = -count;
+//                dir = -1;
+//                s = e;
+//                e = -1;
+//            }
+//            for (int i = s; (all || count != 0) && i != e; i += dir) {
+//                if (list.get(i).equals(value)) {
+//                    list.remove(i);
+//                    e -= dir;
+//                    i -= dir;
+//                    rem++;
+//                    count--;
+//                }
+//            }
+//            return integer(rem);
+//        }
+    }
+
+
+    /**
+     *
+     * @param key0
+     * @param start1
+     * @param stop2
+     * @return
+     * @throws RedisException
+     */
+    protected MultiBulkReply __lrange(byte[] key0, byte[] start1, byte[] stop2) throws RedisException {
+
+        //初始化List 开始于结束指针
+        long metaStart = 0;
+        long metaEnd = 0;
+        //获取元数据的索引值
+        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
+        byte[] valMeta = __get(mymeta, keyMeta); //'0,2'  开始指针，结束指针
+
+        ByteBuf metaBuf = null;
+        ByteBuf startBuf = null;
+        ByteBuf endBuf = null;
+
+        if(valMeta == null){
+            System.out.println("===============2");
+
+            return MultiBulkReply.EMPTY;
+
+        }else{
+            System.out.println("===============3");
+
+            metaBuf = Unpooled.wrappedBuffer(valMeta);
+
+            startBuf=metaBuf.slice(0,8);
+            endBuf=metaBuf.slice(8,8);
+
+            metaStart = metaBuf.readLong();
+            metaEnd = metaBuf.readLong();
+
+            //数据列表为空，清除元数据
+            if((metaStart-metaEnd) == 0){
+                __del(keyMeta);
+                return MultiBulkReply.EMPTY;
+            }
+
+            metaBuf.resetReaderIndex();
+            metaBuf.resetWriterIndex();
+        }
+
+        System.out.println("当前数据===============4 start:"+metaStart);
+        System.out.println("当前数据===============4 end:"+metaEnd);
+
+
+        long s = _torange(start1, (metaEnd-metaStart));
+        long e = _torange(stop2, (metaEnd-metaStart));
+        System.out.println("当前数据===============4.1 e:"+e);
+        if (e < s) e = s;
+        long length = e - s;
+
+
+        System.out.println("当前数据===============4.2 s:"+s);
+        System.out.println("当前数据===============4.3 e:"+e);
+
+        List<BulkReply> results = new ArrayList<BulkReply>();
+        //获取范围内的元素;不删除原有数据
+        for (long i = metaStart+s; i <= metaStart+s+length; i++) {
+
+            //生成获取头部元素的 key
+            byte[] keyPre = __genkey("_l".getBytes(), key0, "#".getBytes());
+            ByteBuf keyPreBuf = Unpooled.wrappedBuffer(keyPre);
+            //遍历元素 key
+            startBuf.resetWriterIndex();
+            startBuf.writeLong(i);
+
+            System.out.println("当前数据===============5 i:"+i);
+
+            ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf,startBuf);
+            byte[] array = keyBuf.readBytes(keyBuf.readableBytes()).array();
+            System.out.println("===============5"+new String(array));
+
+            //获取数据
+            byte[] vals = __get(array);
+
+            System.out.println("===============6"+new String(vals));
+
+
+            results.add(new BulkReply(vals));
+        }
+
+        return new MultiBulkReply(results.toArray(new Reply[results.size()]));
+
+//        return new MultiBulkReply(results);
+//
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null) {
+//            return MultiBulkReply.EMPTY;
+//        } else {
+//            int size = list.size();
+//            int s = _torange(start1, size);
+//            int e = _torange(stop2, size);
+//            if (e < s) e = s;
+//            int length = e - s + 1;
+//            Reply[] replies = new Reply[length];
+//            for (int i = s; i <= e; i++) {
+//                replies[i - s] = new BulkReply(list.get(i).getBytes());
+//            }
+//            return new MultiBulkReply(replies);
+//        }
+    }
+
+    protected BulkReply __lpop(byte[] key0) throws RedisException {
+        //Put(‘+[mylist]list’, ‘0,2’)
+        //Put(‘_l[mylist]#0’, ‘a’)
+        //Put(‘_l[mylist]#1’, ‘b’)
+        //Put(‘_l[mylist]#2’, ‘c’)
+
+        System.out.println("===============1");
+
+        //初始化List 开始于结束指针
+        long metaStart = 0;
+        long metaEnd = 0;
+        //获取元数据的索引值
+        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
+        byte[] valMeta = __get(mymeta, keyMeta); //'0,2'  开始指针，结束指针
+
+        ByteBuf metaBuf = null;
+        ByteBuf startBuf = null;
+        ByteBuf endBuf = null;
+
+        if(valMeta == null){
+            System.out.println("===============2");
+
+//            startBuf = Unpooled.buffer(8);
+//            endBuf = Unpooled.buffer(8);
+//
+//            startBuf.writeLong(metaStart); //start
+//            endBuf.writeLong(metaEnd); //end
+//
+//            metaBuf=Unpooled.wrappedBuffer(startBuf,endBuf);
+
+            return NIL_REPLY;
+
+        }else{
+            System.out.println("===============3");
+
+            metaBuf = Unpooled.wrappedBuffer(valMeta);
+
+            startBuf=metaBuf.slice(0,8);
+            endBuf=metaBuf.slice(8,8);
+
+            metaStart = metaBuf.readLong();
+            metaEnd = metaBuf.readLong();
+
+            metaBuf.resetReaderIndex();
+            metaBuf.resetWriterIndex();
+
+//            metaBuf.writeLong(metaIndex+1);
+        }
+
+        System.out.println("当前数据===============4 start:"+metaStart);
+        System.out.println("当前数据===============4 end:"+metaEnd);
+
+        //生成获取头部元素的 key
+        byte[] keyPre = __genkey("_l".getBytes(), key0, "#".getBytes());
+        ByteBuf keyPreBuf = Unpooled.wrappedBuffer(keyPre);
+        ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf,endBuf);
+        byte[] array = keyBuf.readBytes(keyBuf.readableBytes()).array();
+        System.out.println("===============5"+new String(array));
+
+        //获取数据
+        byte[] vals = __get(array);
+
+        //从存储中删除数据
+        __del(array);
+
+
+        //数据列表为空，清除元数据
+        if((metaEnd-metaStart) == 0){
+            __del(mymeta,keyMeta);
+        } else {
+
+            //meta元数据计数器+1
+            metaEnd=Math.decrementExact(metaEnd);
+            endBuf.resetWriterIndex();
+            endBuf.resetReaderIndex();
+            endBuf.writeLong(metaEnd);
+
+            System.out.println("当前数据===============4 end:"+metaEnd);
+
+            metaBuf=Unpooled.wrappedBuffer(startBuf,endBuf);
+
+            __put(mymeta,keyMeta,metaBuf.readBytes(metaBuf.readableBytes()).array(),-1);
+
+        }
+
+        return new BulkReply(vals);
+
+
+
+
+
+//        try {
+////            mydata.write(writeOpt, batch);
+//
+//            Math.incrementExact(-3);
+//            metaBuf.resetWriterIndex();
+//
+//            metaBuf.writeLong(metaStart);
+//            metaBuf.writeLong(metaEnd);
+//
+//            metaBuf.resetReaderIndex();
+//
+//
+//
+//        } catch (RocksDBException e) {
+//            throw new RuntimeException(e.getMessage());
+//        }
+
+//        return integer(batch.count());
+//        if (list == null || list.size() == 0) {
+//            return NIL_REPLY;
+//        } else {
+//            return new BulkReply(vals);
+//        }
+
+//        List<BytesValue> list = _getlist(key0, true);
+//        for (byte[] value : value1) {
+//            list.add(0, new BytesKey(value));
+//        }
+//        return integer(list.size());
+//        return null;
+    }
+
+
+    public IntegerReply __llen(byte[] key0) throws RedisException {
+        //初始化List 开始于结束指针
+        long metaStart = 0;
+        long metaEnd = 0;
+
+        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
+        byte[] valMeta = __get(mymeta, keyMeta); //'0,2'  开始指针，结束指针
+        ByteBuf metaBuf = null;
+        if(valMeta == null){
+            System.out.println("===============2");
+        }else{
+            System.out.println("===============3");
+
+            metaBuf = Unpooled.wrappedBuffer(valMeta);
+
+            metaStart = metaBuf.readLong();
+            metaEnd = metaBuf.readLong();
+
+        }
+
+
+        System.out.println("当前数据===============4 start:"+metaStart);
+        System.out.println("当前数据===============4 end:"+metaEnd);
+        System.out.println("当前数据===============4 count:"+(metaEnd-metaStart+1));
+
+        return integer(metaEnd-metaStart+1);
+    }
+
+    /**
+     * List 类型处理
+     * Lpush 命令将一个或多个值插入到列表头部。 如果 key 不存在，一个空列表会被创建并执行 LPUSH 操作。 当 key 存在但不是列表类型时，返回一个错误。
+     *
+     * @param key0
+     * @param value1
+     * @return
+     * @throws RedisException
+     */
+    protected IntegerReply __lpush(byte[] key0, byte[][] value1) throws RedisException {
+        //Put(‘+[mylist]list’, ‘0,2’)
+        //Put(‘_l[mylist]#0’, ‘a’)
+        //Put(‘_l[mylist]#1’, ‘b’)
+        //Put(‘_l[mylist]#2’, ‘c’)
+
+            System.out.println("===============1");
+
+        //初始化List 开始于结束指针
+        long metaStart = 0;
+        long metaEnd = 0;
+        //获取元数据的索引值
+        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
+        byte[] valMeta = __get(mymeta, keyMeta); //'0,2'  开始指针，结束指针
+        ByteBuf metaBuf = null;
+        if(valMeta == null){
+            System.out.println("===============2");
+
+            metaBuf = Unpooled.buffer(8);
+            metaBuf.writeLong(metaStart); //start
+            metaBuf.writeLong(metaEnd); //end
+
+            metaBuf.resetReaderIndex();
+
+        }else{
+            System.out.println("===============3");
+
+            metaBuf = Unpooled.wrappedBuffer(valMeta);
+
+            metaStart = metaBuf.readLong();
+            metaEnd = metaBuf.readLong();
+
+            metaStart=Math.decrementExact(metaStart); //后面数据要自增长
+
+            metaBuf.resetReaderIndex();
+            metaBuf.resetWriterIndex();
+
+//            metaBuf.writeLong(metaIndex+1);
+        }
+
+        System.out.println("当前数据===============4 start:"+metaStart);
+        System.out.println("当前数据===============4 end:"+metaEnd);
+
+        //批量处理
+        final WriteOptions writeOpt = new WriteOptions();
+        final WriteBatch batch = new WriteBatch();
+
+        ByteBuf startBuf = Unpooled.buffer(8);
+        //添加元素
+        for (byte[] bt:value1
+             ) {
+            System.out.println("===============5"+new String(bt));
+
+            byte[] keyPre = __genkey("_l".getBytes(), key0, "#".getBytes());
+            ByteBuf keyPreBuf = Unpooled.wrappedBuffer(keyPre);
+            //插入头部，开始位置-1
+//            metaStart=metaStart-1;
+//            if(metaStart != 0){ //第一个数据写在 0,0 ; 后面数据要自增长
+//                metaStart=Math.decrementExact(metaStart);
+//            }
+
+            startBuf.writeLong(metaStart);
+            ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf,startBuf);
+//            keyBuf.writeLong(metaIndex);
+
+            byte[] array = keyBuf.readBytes(keyBuf.readableBytes()).array();
+            System.out.println("===============5"+new String(array));
+
+            batch.put(array,__genVal(bt,-1));
+
+            startBuf.resetWriterIndex();
+            startBuf.resetReaderIndex();
+
+            //元素下标数据增加
+//            metaBuf.resetReaderIndex();
+//            System.out.println("===============5.1");
+
+//            metaIndex = metaBuf.readLong();
+//            metaBuf.resetWriterIndex();
+//            System.out.println("===============5.2");
+
+//            metaBuf.writeLong(metaIndex+1);
+//            System.out.println("===============5.3");
+
+//            metaBuf.resetReaderIndex();
+
+        }
+
+        System.out.println("===============6");
+
+        try {
+            mydata.write(writeOpt, batch);
+
+
+            metaBuf.resetWriterIndex();
+
+            metaBuf.writeLong(metaStart);
+            metaBuf.writeLong(metaEnd);
+
+            metaBuf.resetReaderIndex();
+            __put(mymeta,keyMeta,metaBuf.readBytes(metaBuf.readableBytes()).array(),-1);
+
+        } catch (RocksDBException e) {
+            throw new RuntimeException(e.getMessage());
+        }
+        return integer(batch.count());
+
+
+//        List<BytesValue> list = _getlist(key0, true);
+//        for (byte[] value : value1) {
+//            list.add(0, new BytesKey(value));
+//        }
+//        return integer(list.size());
+    }
+
+    /**
      * 设置成功，返回 1 。 如果给定字段已经存在且没有操作被执行，返回 0 。
      *
      * @param key
@@ -656,7 +1203,7 @@ public class RocksdbRedis extends RedisBase {
      * @param bytes
      * @throws RedisException
      */
-    private void __del(byte[] bytes) throws RedisException {
+    protected void __del(byte[] bytes) throws RedisException {
             __del(mydata,bytes);
     }
 
@@ -920,6 +1467,22 @@ public class RocksdbRedis extends RedisBase {
         }
         if (offset >= length) {
             offset = length - 1;
+        }
+        return (int) offset;
+    }
+
+
+    protected static int _torange(byte[] offset1, long length) throws RedisException {
+        long offset = bytesToNum(offset1);
+        if (offset > MAX_VALUE) {
+            throw notInteger();
+        }
+        if (offset < 0) {
+            offset = (length + offset);
+        }
+        if (offset >= length) {
+//            offset = length - 1;
+            offset = length;
         }
         return (int) offset;
     }
@@ -1246,10 +1809,13 @@ public class RocksdbRedis extends RedisBase {
      * @return IntegerReply
      */
     public IntegerReply del(byte[][] key0) throws RedisException {
+        System.out.println("del......");
         int total = 0;
         for (byte[] bytes : key0) {
 
-            __del(bytes);
+            byte[] key = __genkey(bytes, "|".getBytes(), "string".getBytes());
+
+            __del(key);
 
             total++;
 

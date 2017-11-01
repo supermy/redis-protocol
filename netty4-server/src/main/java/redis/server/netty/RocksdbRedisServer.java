@@ -2,7 +2,7 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import org.rocksdb.*;
+import org.rocksdb.RocksDBException;
 import redis.netty4.*;
 import redis.util.*;
 
@@ -10,7 +10,6 @@ import java.lang.reflect.Field;
 import java.security.SecureRandom;
 import java.util.*;
 
-import static java.lang.Double.valueOf;
 import static java.lang.Integer.MAX_VALUE;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
@@ -21,14 +20,18 @@ import static redis.util.Encoding.numToBytes;
 
 /**
  * Rocksdb 结合 Redis
- *
+ * <p>
  * 指令优化：
- *    set   mset    setex   setnx   setrange msetnx psetex
- *    get   mget    getset  getrange
- *    incr  incrby  incrbyfloat
- *    decr  decrby
- *    append
+ * set   mset    setex   setnx   setrange msetnx psetex hsetnx
+ * get   mget    getset  getrange   hvals
+ * del
+ * incr  incrby  incrbyfloat
+ * decr  decrby
+ * append
+ * exists
+ * PERSIST   EXPIRE    EXPIREAT    PEXPIRE     PEXPIREAT     TTL     PTTL
  *
+ * 不支持 dump
  */
 public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 
@@ -101,7 +104,6 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     }
 
 
-
     /**
      * Append a value to a key
      * String
@@ -114,10 +116,10 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     public IntegerReply append(byte[] key0, byte[] value1) throws RedisException {
         byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
 
-        byte[] bt = __genkey(__get(key),value1);
+        byte[] bt = __genkey(__get(key), value1);
 
 
-            __put(key,bt);
+        __put(key, bt);
 
 
         return integer(bt.length);
@@ -279,7 +281,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 
         byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
 
-        byte[] o =  __get(key);
+        byte[] o = __get(key);
 
 //        if (o instanceof byte[]) {
 //            return new BulkReply(o);
@@ -324,7 +326,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     /**
      * Get a substring of the string stored at a key
      * String
-     *
+     * <p>
      * 返回 key 中字符串值的子字符
      *
      * @param key0
@@ -357,7 +359,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     /**
      * Set the string value of a key and return its old value
      * String
-     *
+     * <p>
      * 将给定 key 的值设为 value ，并返回 key 的旧值(old value)。
      *
      * @param key0
@@ -370,7 +372,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 
         byte[] put = __get(key);
 
-        __put(key,value1);
+        __put(key, value1);
 
 //        Object put = _put(key0, value1);
         if (put == null || put instanceof byte[]) {
@@ -418,8 +420,6 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     /**
      * Increment the float value of a key by the given amount
      * String
-     * 
-     * 
      *
      * @param key0
      * @param increment1
@@ -484,7 +484,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
         //处理 string 的主键
         for (int i = 0; i < length; i += 2) {
             //_put(key_or_value0[i], key_or_value0[i + 1]);
-            key_or_value0[i]= __genkey(key_or_value0[i], "|".getBytes(), "string".getBytes());
+            key_or_value0[i] = __genkey(key_or_value0[i], "|".getBytes(), "string".getBytes());
 
         }
         __mput(key_or_value0);
@@ -495,7 +495,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     /**
      * Set multiple keys to multiple values, only if none of the keys exist
      * String
-     *
+     * <p>
      * 用于所有给定 key 都不存在时，同时设置一个或多个 key-value 对。
      *
      * @param key_or_value0
@@ -511,19 +511,19 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
         }
 
 
-        List<byte[]> listFds=new ArrayList<byte[]>();
+        List<byte[]> listFds = new ArrayList<byte[]>();
         //处理 string 的主键
         for (int i = 0; i < length; i += 2) {
             //_put(key_or_value0[i], key_or_value0[i + 1]);
-            key_or_value0[i]= __genkey(key_or_value0[i], "|".getBytes(), "string".getBytes());
+            key_or_value0[i] = __genkey(key_or_value0[i], "|".getBytes(), "string".getBytes());
             listFds.add(key_or_value0[i]);
         }
 
         //有一个存在,返回错误
         List<BulkReply> bulkReplies = __mget(listFds);
-        for (BulkReply br:bulkReplies
-             ) {
-            if(br.asUTF8String()!=null){
+        for (BulkReply br : bulkReplies
+                ) {
+            if (br.asUTF8String() != null) {
                 return integer(0);
             }
 
@@ -545,7 +545,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     /**
      * Set the value and expiration in milliseconds of a key
      * String
-     *
+     * <p>
      * 命令以毫秒为单位设置 key 的生存时间。
      *
      * @param key0
@@ -558,7 +558,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 
         byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
 
-        __put(mydata,key, value2, bytesToNum(milliseconds1) + now());
+        __put(mydata, key, value2, bytesToNum(milliseconds1) + now());
         return OK;
     }
 
@@ -626,7 +626,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     /**
      * Set the value and expiration of a key
      * String
-     *
+     * <p>
      * 将值 value 关联到 key ，并将 key 的过期时间设为 seconds (以秒为单位)。
      *
      * @param key0
@@ -637,7 +637,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     @Override
     public StatusReply setex(byte[] key0, byte[] seconds1, byte[] value2) throws RedisException {
         byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
-        __put(mydata,key,value2,bytesToNum(seconds1) * 1000 + now());
+        __put(mydata, key, value2, bytesToNum(seconds1) * 1000 + now());
 //        _put(key, value2, bytesToNum(seconds1) * 1000 + now());
         return OK;
     }
@@ -645,7 +645,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     /**
      * Set the value of a key, only if the key does not exist
      * String
-     *
+     * <p>
      * 只有在 key 不存在时设置 key 的值。
      *
      * @param key0
@@ -681,8 +681,8 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 
         ByteBuf hkeybuf = Unpooled.wrappedBuffer(bytes); //优化 零拷贝
 
-        int offset = _toposint(offset1)<bytes.length?_toposint(offset1):bytes.length;
-        hkeybuf.writeBytes(value2,offset,value2.length);
+        int offset = _toposint(offset1) < bytes.length ? _toposint(offset1) : bytes.length;
+        hkeybuf.writeBytes(value2, offset, value2.length);
 
         byte[] array = hkeybuf.readBytes(hkeybuf.readableBytes()).array();
         __put(key, array);
@@ -1159,8 +1159,9 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply llen(byte[] key0) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        return list == null ? integer(0) : integer(list.size());
+        return __llen(key0);
+//        List<BytesValue> list = _getlist(key0, false);
+//        return list == null ? integer(0) : integer(list.size());
     }
 
     /**
@@ -1172,12 +1173,13 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public BulkReply lpop(byte[] key0) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        if (list == null || list.size() == 0) {
-            return NIL_REPLY;
-        } else {
-            return new BulkReply(list.remove(0).getBytes());
-        }
+        return __lpop(key0);
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null || list.size() == 0) {
+//            return NIL_REPLY;
+//        } else {
+//            return new BulkReply(list.remove(0).getBytes());
+//        }
     }
 
     /**
@@ -1190,16 +1192,19 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply lpush(byte[] key0, byte[][] value1) throws RedisException {
-        List<BytesValue> list = _getlist(key0, true);
-        for (byte[] value : value1) {
-            list.add(0, new BytesKey(value));
-        }
-        return integer(list.size());
+        return __lpush(key0, value1);
+//        List<BytesValue> list = _getlist(key0, true);
+//        for (byte[] value : value1) {
+//            list.add(0, new BytesKey(value));
+//        }
+//        return integer(list.size());
     }
 
     /**
      * Prepend a value to a list, only if the list exists
      * List
+     *
+     * Lpushx 将一个值插入到已存在的列表头部，列表不存在时操作无效。
      *
      * @param key0
      * @param value1
@@ -1207,13 +1212,25 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply lpushx(byte[] key0, byte[] value1) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        if (list == null) {
+
+        if(__llen(key0).data() == 0){
             return integer(0);
-        } else {
-            list.add(0, new BytesKey(value1));
+        }else{
+            byte[][] vals=new byte[1][];
+            vals[0]=value1;
+            return __lpush(key0, vals);
         }
-        return integer(list.size());
+//
+//
+//
+//
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null) {
+//            return integer(0);
+//        } else {
+//            list.add(0, new BytesKey(value1));
+//        }
+//        return integer(list.size());
     }
 
     /**
@@ -1227,21 +1244,23 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public MultiBulkReply lrange(byte[] key0, byte[] start1, byte[] stop2) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        if (list == null) {
-            return MultiBulkReply.EMPTY;
-        } else {
-            int size = list.size();
-            int s = _torange(start1, size);
-            int e = _torange(stop2, size);
-            if (e < s) e = s;
-            int length = e - s + 1;
-            Reply[] replies = new Reply[length];
-            for (int i = s; i <= e; i++) {
-                replies[i - s] = new BulkReply(list.get(i).getBytes());
-            }
-            return new MultiBulkReply(replies);
-        }
+        return __lrange(key0, start1, stop2);
+
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null) {
+//            return MultiBulkReply.EMPTY;
+//        } else {
+//            int size = list.size();
+//            int s = _torange(start1, size);
+//            int e = _torange(stop2, size);
+//            if (e < s) e = s;
+//            int length = e - s + 1;
+//            Reply[] replies = new Reply[length];
+//            for (int i = s; i <= e; i++) {
+//                replies[i - s] = new BulkReply(list.get(i).getBytes());
+//            }
+//            return new MultiBulkReply(replies);
+//        }
     }
 
     /**
@@ -1425,6 +1444,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
         }
     }
 
+
     /**
      * Return a serialized version of the value stored at the specified key.
      * Generic
@@ -1434,6 +1454,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public BulkReply dump(byte[] key0) throws RedisException {
+
         throw new RedisException("Not supported");
     }
 
@@ -1446,12 +1467,13 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply exists(byte[] key0) throws RedisException {
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+
 //        Object o = _get(key0);
-        StringBuilder sb=new StringBuilder();
-        boolean o = mydata.keyMayExist(key0,sb);
+        StringBuilder sb = new StringBuilder();
+        boolean o = mydata.keyMayExist(key, sb);
         return o ? integer(1) : integer(0);
     }
-
 
 
     /**
@@ -1464,17 +1486,27 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply expire(byte[] key0, byte[] seconds1) throws RedisException {
-        StringBuilder sb=new StringBuilder();
-        boolean b = mydata.keyMayExist(key0, sb);
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+
+
+//        StringBuilder sb=new StringBuilder();
+//        boolean b = mydata.keyMayExist(key, sb);
 //        Object o = _get(key0);
-        if (!b) {
+        byte[] vals = __get(key);
+        if (vals == null) {
             return integer(0);
+
         } else {
-            try {
-                myexpires.put(key0, new Long(bytesToNum(seconds1) * 1000 + now()).toString().getBytes());
-            } catch (RocksDBException e) {
-                throw new RedisException(e.getMessage());
-            }
+
+//            try {
+
+            __put(mydata, key, vals, new Long(bytesToNum(seconds1) * 1000 + now()));
+
+//                myexpires.put(key0, new Long(bytesToNum(seconds1) * 1000 + now()).toString().getBytes());
+
+//            } catch (RocksDBException e) {
+//                throw new RedisException(e.getMessage());
+//            }
             return integer(1);
         }
     }
@@ -1489,17 +1521,22 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply expireat(byte[] key0, byte[] timestamp1) throws RedisException {
-        StringBuilder sb=new StringBuilder();
-        boolean b = mydata.keyMayExist(key0, sb);
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+        byte[] vals = __get(key);
+
+//        StringBuilder sb=new StringBuilder();
+//        boolean b = mydata.keyMayExist(key0, sb);
 //        Object o = _get(key0);
-        if (!b) {
+        if (vals == null) {
             return integer(0);
         } else {
-            try {
-                myexpires.put(key0, new Long(bytesToNum(timestamp1) * 1000).toString().getBytes());
-            } catch (RocksDBException e) {
-                throw new RedisException(e.getMessage());
-            }
+//            try {
+            __put(mydata, key, vals, new Long(bytesToNum(timestamp1) * 1000));
+
+//                myexpires.put(key0, new Long(bytesToNum(timestamp1) * 1000).toString().getBytes());
+//            } catch (RocksDBException e) {
+//                throw new RedisException(e.getMessage());
+//            }
             return integer(1);
         }
 
@@ -1527,17 +1564,16 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
             throw new RedisException("wrong number of arguments for KEYS");
         }
 
-        List<byte[]> bytes = __keys(mydata,pattern0);
+        List<byte[]> bytes = __keys(mydata, pattern0);
 
         List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
-        for (byte[] bt:bytes
-             ) {
+        for (byte[] bt : bytes
+                ) {
             replies.add(new BulkReply(bt));
         }
 
         return new MultiBulkReply(replies.toArray(new Reply[replies.size()]));
     }
-
 
 
     /**
@@ -1592,24 +1628,33 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply persist(byte[] key0) throws RedisException {
-//        Object o = _get(key0);
-//        if (o == null) {
-//            return integer(0);
-//        } else {
-//            Long remove = expires.remove(key0);
-//            return remove == null ? integer(0) : integer(1);
-//        }
-        StringBuilder sb=new StringBuilder();
-        if(myexpires.keyMayExist(key0,sb)){
-            try {
-                myexpires.delete(key0);
-            } catch (RocksDBException e) {
-                throw new RedisException(e.getMessage());
-            }
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+        byte[] val = __get(key);
+        if (val == null) {
+            return integer(0);
+        } else {
+            __put(mydata, key, val, -1);
             return integer(1);
 
         }
-        return integer(0);
+////        Object o = _get(key0);
+////        if (o == null) {
+////            return integer(0);
+////        } else {
+////            Long remove = expires.remove(key0);
+////            return remove == null ? integer(0) : integer(1);
+////        }
+//        StringBuilder sb=new StringBuilder();
+//        if(myexpires.keyMayExist(key0,sb)){
+//            try {
+//                myexpires.delete(key0);
+//            } catch (RocksDBException e) {
+//                throw new RedisException(e.getMessage());
+//            }
+//            return integer(1);
+//
+//        }
+//        return integer(0);
 
     }
 
@@ -1623,19 +1668,31 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply pexpire(byte[] key0, byte[] milliseconds1) throws RedisException {
-        StringBuilder sb=new StringBuilder();
-        boolean b = mydata.keyMayExist(key0, sb);
-//        Object o = _get(key0);
-        if (!b) {
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+
+        byte[] vals = __get(key);
+        if (vals == null) {
             return integer(0);
+
         } else {
-            try {
-                myexpires.put(key0, new Long(bytesToNum(milliseconds1)  + now()).toString().getBytes());
-            } catch (RocksDBException e) {
-                throw new RedisException(e.getMessage());
-            }
+            __put(mydata, key, vals, new Long(bytesToNum(milliseconds1) + now()));
+
             return integer(1);
         }
+
+//        StringBuilder sb=new StringBuilder();
+//        boolean b = mydata.keyMayExist(key0, sb);
+////        Object o = _get(key0);
+//        if (!b) {
+//            return integer(0);
+//        } else {
+//            try {
+//                myexpires.put(key0, new Long(bytesToNum(milliseconds1)  + now()).toString().getBytes());
+//            } catch (RocksDBException e) {
+//                throw new RedisException(e.getMessage());
+//            }
+//            return integer(1);
+//        }
 //
 //        Object o = _get(key0);
 //        if (o == null) {
@@ -1656,26 +1713,38 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply pexpireat(byte[] key0, byte[] milliseconds_timestamp1) throws RedisException {
-//        Object o = _get(key0);
-//        if (o == null) {
-//            return integer(0);
-//        } else {
-//            expires.put(key0, bytesToNum(milliseconds_timestamp1));
-//            return integer(1);
-//        }
-        StringBuilder sb=new StringBuilder();
-        boolean b = mydata.keyMayExist(key0, sb);
-//        Object o = _get(key0);
-        if (!b) {
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+
+        byte[] vals = __get(key);
+        if (vals == null) {
             return integer(0);
+
         } else {
-            try {
-                myexpires.put(key0, new Long(bytesToNum(milliseconds_timestamp1)).toString().getBytes());
-            } catch (RocksDBException e) {
-                throw new RedisException(e.getMessage());
-            }
+            __put(mydata, key, vals, new Long(bytesToNum(milliseconds_timestamp1)));
+
             return integer(1);
         }
+
+////        Object o = _get(key0);
+////        if (o == null) {
+////            return integer(0);
+////        } else {
+////            expires.put(key0, bytesToNum(milliseconds_timestamp1));
+////            return integer(1);
+////        }
+//        StringBuilder sb=new StringBuilder();
+//        boolean b = mydata.keyMayExist(key0, sb);
+////        Object o = _get(key0);
+//        if (!b) {
+//            return integer(0);
+//        } else {
+//            try {
+//                myexpires.put(key0, new Long(bytesToNum(milliseconds_timestamp1)).toString().getBytes());
+//            } catch (RocksDBException e) {
+//                throw new RedisException(e.getMessage());
+//            }
+//            return integer(1);
+//        }
     }
 
     /**
@@ -1687,52 +1756,118 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply pttl(byte[] key0) throws RedisException {
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
 
+        byte[] values = new byte[0];
+        try {
+            values = mydata.get(key);
+        } catch (RocksDBException e) {
+            throw new RedisException(e.getMessage());
+        }
 
 //        Object o = _get(key0);
-
-        if (!__exists(key0)) {
-//            if (o == null) {
+        if (values == null) {
             return integer(-1);
         } else {
-            Long aLong = expires.get(key0);
-            if (aLong == null) {
+//            Long aLong = expires.get(key0);
+            ByteBuf vvBuf = Unpooled.wrappedBuffer(values);
+            vvBuf.resetReaderIndex();
+            ByteBuf ttlBuf = vvBuf.readSlice(8);
+            ByteBuf sizeBuf = vvBuf.readSlice(4);
+
+            if (ttlBuf == null) {
                 return integer(-1);
             } else {
-                return integer(aLong - now());
+                long ttl = ttlBuf.readLong();//ttl
+
+                if (ttl == -1) {
+                    return integer(-1);
+                } else {
+                    return integer((ttl - now()));
+                }
+
             }
         }
+
+//
+////        Object o = _get(key0);
+//
+//        if (!__exists(key0)) {
+////            if (o == null) {
+//            return integer(-1);
+//        } else {
+//            Long aLong = expires.get(key0);
+//            if (aLong == null) {
+//                return integer(-1);
+//            } else {
+//                return integer(aLong - now());
+//            }
+//        }
+    }
+
+
+    /**
+     * 获取随机字符串 a-z,A-Z,0-9
+     *
+     * @param length 长度
+     * @return
+     */
+    public static String getRandomString(int length) {
+        String str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        Random random = new Random();
+        StringBuffer sb = new StringBuffer();
+
+        for (int i = 0; i < length; ++i) {
+            int number = random.nextInt(62);// [0,62)
+            sb.append(str.charAt(number));
+        }
+        return sb.toString();
     }
 
     /**
      * Return a random key from the keyspace
      * Generic
+     * <p>
+     * RANDOMKEY 命令从当前数据库中随机返回一个 key
      *
      * @return BulkReply
      */
     @Override
     public BulkReply randomkey() throws RedisException {
-        // This implementation mirrors that of Redis. I'm not
-        // sure I believe that this is a great algorithm but
-        // it beats the alternatives that are very inefficient.
-        if (tableField != null) {
-            int size = data.size();
 
-            size=mydbsize();
+        // FIXME: 2017/10/31 数据量少的情况下，随机可能取不到数据
 
-            if (size == 0) {
-                return NIL_REPLY;
-            }
-            try {
-                BytesKey key = getRandomKey(data);
-                return new BulkReply(key.getBytes());
-            } catch (Exception e) {
-                throw new RedisException(e);
-            }
+        String randomString = getRandomString(1);
+
+        List<byte[]> bytes = __keys(mydata, randomString.getBytes());
+        if (bytes.size() > 0) {
+            return new BulkReply(bytes.get(0));
+        } else {
+            return NIL_REPLY;
         }
-        return null;
+
+//        // This implementation mirrors that of Redis. I'm not
+//        // sure I believe that this is a great algorithm but
+//        // it beats the alternatives that are very inefficient.
+//        if (tableField != null) {
+//            int size = data.size();
+//
+//            size=mydbsize();
+//
+//            if (size == 0) {
+//                return NIL_REPLY;
+//            }
+//            try {
+//                BytesKey key = getRandomKey(data);
+//                return new BulkReply(key.getBytes());
+//            } catch (Exception e) {
+//                throw new RedisException(e);
+//            }
+//        }
+//        return null;
     }
 
+    @Deprecated
     private BytesKey getRandomKey(Map data1) throws IllegalAccessException {
         Map.Entry[] table = (Map.Entry[]) tableField.get(data1);
         int length = table.length;
@@ -1765,21 +1900,29 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public StatusReply rename(byte[] key0, byte[] newkey1) throws RedisException {
-        Object o = _get(key0);
-        if (o == null) {
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+        byte[] val = __get(key);
+
+
+//        Object o = _get(key0);
+        if (val == null) {
             throw noSuchKey();
         } else {
 
-            try {
-                mydata.put(newkey1,mydata.get(key0));
-                myexpires.put(newkey1,mydata.get(key0));
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-                throw new RuntimeException(e.getMessage());
-            }
+//            try {
+                // FIXME: 2017/10/31 有效期会丢失，默认为永久有效
+                __put(newkey1, val);
+                __del(key);
+//                mydata.put(newkey1,mydata.get(key0));
+//                myexpires.put(newkey1,mydata.get(key0));
 
-            data.put(newkey1, data.remove(key0));
-            expires.put(newkey1, expires.remove(key0));
+//            } catch (RocksDBException e) {
+//                e.printStackTrace();
+//                throw new RuntimeException(e.getMessage());
+//            }
+
+//            data.put(newkey1, data.remove(key0));
+//            expires.put(newkey1, expires.remove(key0));
 
             return OK;
         }
@@ -1795,36 +1938,66 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply renamenx(byte[] key0, byte[] newkey1) throws RedisException {
-        Object o = _get(key0);
-        if (o == null) {
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+        byte[] val = __get(key);
+
+
+//        Object o = _get(key0);
+        if (val == null) {
             throw noSuchKey();
         } else {
-            //Object newo = _get(newkey1);
-            if (!__exists(newkey1)) {
-//                if (newo == null) {
 
-                try {
-                    mydata.put(newkey1,mydata.get(key0));
-                    mydata.delete(key0);
+//            try {
+                // FIXME: 2017/10/31 有效期会丢失，默认为永久有效
+                byte[] newval = __get(newkey1);
+                if (newval == null) {
+                    __put(newkey1, val);
+                    __del(key);
+                    return integer(1);
+                } else return integer(0);
 
-                    if(__existsTTL(key0)){
-                        myexpires.put(newkey1,myexpires.get(key0));
-                        myexpires.delete(key0);
-                    }
-
-
-                } catch (RocksDBException e) {
-                    e.printStackTrace();
-                    throw new RuntimeException(e.getMessage());
-                }
-
-//                data.put(newkey1, data.remove(key0));
-//                expires.put(newkey1, expires.remove(key0));
-                return integer(1);
-            } else {
-                return integer(0);
-            }
+//            } catch (RocksDBException e) {
+//                e.printStackTrace();
+//                throw new RuntimeException(e.getMessage());
+//            }
         }
+
+//            data.put(newkey1, data.remove(key0));
+//            expires.put(newkey1, expires.remove(key0));
+
+//            return OK;
+//
+//
+//        Object o = _get(key0);
+//        if (o == null) {
+//            throw noSuchKey();
+//        } else {
+//            //Object newo = _get(newkey1);
+//            if (!__exists(newkey1)) {
+////                if (newo == null) {
+//
+//                try {
+//                    mydata.put(newkey1, mydata.get(key0));
+//                    mydata.delete(key0);
+//
+//                    if (__existsTTL(key0)) {
+//                        myexpires.put(newkey1, myexpires.get(key0));
+//                        myexpires.delete(key0);
+//                    }
+//
+//
+//                } catch (RocksDBException e) {
+//                    e.printStackTrace();
+//                    throw new RuntimeException(e.getMessage());
+//                }
+//
+////                data.put(newkey1, data.remove(key0));
+////                expires.put(newkey1, expires.remove(key0));
+//                return integer(1);
+//            } else {
+//                return integer(0);
+//            }
+//        }
     }
 
     /**
@@ -1871,15 +2044,36 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply ttl(byte[] key0) throws RedisException {
-        Object o = _get(key0);
-        if (o == null) {
+        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+
+        byte[] values = new byte[0];
+        try {
+            values = mydata.get(key);
+        } catch (RocksDBException e) {
+            throw new RedisException(e.getMessage());
+        }
+
+//        Object o = _get(key0);
+        if (values == null) {
             return integer(-1);
         } else {
-            Long aLong = expires.get(key0);
-            if (aLong == null) {
+//            Long aLong = expires.get(key0);
+            ByteBuf vvBuf = Unpooled.wrappedBuffer(values);
+            vvBuf.resetReaderIndex();
+            ByteBuf ttlBuf = vvBuf.readSlice(8);
+            ByteBuf sizeBuf = vvBuf.readSlice(4);
+
+            if (ttlBuf == null) {
                 return integer(-1);
             } else {
-                return integer((aLong - now()) / 1000);
+                long ttl = ttlBuf.readLong();//ttl
+
+                if (ttl == -1) {
+                    return integer(-1);
+                } else {
+                    return integer((ttl - now()) / 1000);
+                }
+
             }
         }
     }
@@ -1893,22 +2087,35 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public StatusReply type(byte[] key0) throws RedisException {
-        Object o = _get(key0);
-        //todo
-        if (o == null) {
-            return new StatusReply("none");
-        } else if (o instanceof byte[]) {
-            return new StatusReply("string");
-        } else if (o instanceof Map) {
-            return new StatusReply("hash");
-        } else if (o instanceof List) {
-            return new StatusReply("list");
-        } else if (o instanceof SortedSet) {
-            return new StatusReply("zset");
-        } else if (o instanceof Set) {
-            return new StatusReply("set");
-        }
-        return null;
+        // FIXME: 2017/10/31 通过元数据来处理
+        throw new RedisException("Not supported");
+
+//        返回 key 的数据类型，数据类型有：
+//        none (key不存在)
+//        string (字符串)
+//        list (列表)
+//        set (集合)
+//        zset (有序集)
+//        hash (哈希表)
+
+//
+//
+//        Object o = _get(key0);
+//        //todo
+//        if (o == null) {
+//            return new StatusReply("none");
+//        } else if (o instanceof byte[]) {
+//            return new StatusReply("string");
+//        } else if (o instanceof Map) {
+//            return new StatusReply("hash");
+//        } else if (o instanceof List) {
+//            return new StatusReply("list");
+//        } else if (o instanceof SortedSet) {
+//            return new StatusReply("zset");
+//        } else if (o instanceof Set) {
+//            return new StatusReply("set");
+//        }
+//        return null;
     }
 
     /**
@@ -2024,9 +2231,9 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 //        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
         int total = 0;
         for (byte[] hkey : field1) {
-            __hdel(key0,hkey);
+            __hdel(key0, hkey);
 //            total += hash.remove(hkey) == null ? 0 : 1;
-            total +=  1;
+            total += 1;
         }
         return integer(total);
     }
@@ -2044,7 +2251,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 
 
 //        return _gethash(key0, false).get(field1) == null ? integer(0) : integer(1);
-        return __hexists(key0,field1) ? integer(0) : integer(1);
+        return __hexists(key0, field1) ? integer(0) : integer(1);
     }
 
     /**
@@ -2155,7 +2362,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
         List<byte[]> bytes = __hkeys(key0);
 
         List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
-        for (byte[] bt:bytes
+        for (byte[] bt : bytes
                 ) {
             replies.add(new BulkReply(bt));
         }
@@ -2210,7 +2417,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public StatusReply hmset(byte[] key0, byte[][] field_or_value1) throws RedisException {
-        __hmput(key0,field_or_value1);
+        __hmput(key0, field_or_value1);
         return OK;
     }
 
@@ -2225,8 +2432,8 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply hset(byte[] key0, byte[] field1, byte[] value2) throws RedisException {
-        Object put = __hput(key0,field1,value2);
-        return put == null ? integer(1) : integer(0);
+        byte[] put = __hput(key0, field1, value2);
+        return put == null ? integer(0) : integer(1);
     }
 
     /**
@@ -2241,7 +2448,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     @Override
     public IntegerReply hsetnx(byte[] key0, byte[] field1, byte[] value2) throws RedisException {
 
-       return  __hputnx(key0,field1,value2);
+        return __hputnx(key0, field1, value2);
 
 //        BytesKeyObjectMap<byte[]> hash = _gethash(key0, true);
 //
@@ -2264,14 +2471,47 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public MultiBulkReply hvals(byte[] key0) throws RedisException {
-        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
-        int size = hash.size();
-        Reply[] replies = new Reply[size];
-        int i = 0;
-        for (byte[] hvalue : hash.values()) {
-            replies[i++] = new BulkReply(hvalue);
+
+        byte[] hkpre = "+".getBytes();
+        byte[] hksuf = "hash".getBytes();
+        byte[] fkpre = "_h".getBytes();
+
+        //hash field key pre
+        byte[] fkeypre = __genkey(fkpre, key0,"|".getBytes());
+
+        //检索所有的 hash field key  所有的 key 都是有序的
+        List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
+
+
+        List<byte[]> keyVals = __keyVals(mydata, fkeypre);//顺序读取 ;field 过期逻辑复杂，暂不处理
+
+
+        int i=0;
+        for (byte[] bt:keyVals
+                ) {
+            if( i%2 == 0){  //key 处理
+//                ByteBuf hkeybuf1 = Unpooled.wrappedBuffer(bt); //优化 零拷贝
+
+//                ByteBuf slice = hkeybuf1.slice(3 + key.length, bt.length - 3 - key.length);
+//
+//                replies.add(new BulkReply(slice.readBytes(slice.readableBytes()).array()));
+            }else {
+
+                replies.add(new BulkReply(bt));
+            }
+            i++;
         }
-        return new MultiBulkReply(replies);
+
+        return new MultiBulkReply(replies.toArray(new Reply[replies.size()]));
+
+//        BytesKeyObjectMap<byte[]> hash = _gethash(key0, false);
+//        int size = hash.size();
+//        Reply[] replies = new Reply[size];
+//        int i = 0;
+//        for (byte[] hvalue : hash.values()) {
+//            replies[i++] = new BulkReply(hvalue);
+//        }
+//        return new MultiBulkReply(replies);
     }
 
     /**
@@ -2909,7 +3149,6 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     }
 
 
-
     /**
      * Add multiple sorted sets and store the resulting sorted set in a new key
      * Sorted_set
@@ -2923,10 +3162,6 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     public IntegerReply zunionstore(byte[] destination0, byte[] numkeys1, byte[][] key2) throws RedisException {
         return _zstore(destination0, numkeys1, key2, "zunionstore", true);
     }
-
-
-
-
 
 
 }
