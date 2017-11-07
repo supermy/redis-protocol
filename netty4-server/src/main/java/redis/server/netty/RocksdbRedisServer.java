@@ -1274,35 +1274,39 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply lrem(byte[] key0, byte[] count1, byte[] value2) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        if (list == null) {
-            return integer(0);
-        } else {
-            int count = _toint(count1);
-            BytesKey value = new BytesKey(value2);
-            int size = list.size();
-            int dir = 1;
-            int s = 0;
-            int e = size;
-            int rem = 0;
-            boolean all = count == 0;
-            if (count < 0) {
-                count = -count;
-                dir = -1;
-                s = e;
-                e = -1;
-            }
-            for (int i = s; (all || count != 0) && i != e; i += dir) {
-                if (list.get(i).equals(value)) {
-                    list.remove(i);
-                    e -= dir;
-                    i -= dir;
-                    rem++;
-                    count--;
-                }
-            }
-            return integer(rem);
-        }
+        return __lrem(key0, count1, value2);
+//        throw new RedisException("Not supported");
+//        return __lrem(key0, count1, value2);
+//
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null) {
+//            return integer(0);
+//        } else {
+//            int count = _toint(count1);
+//            BytesKey value = new BytesKey(value2);
+//            int size = list.size();
+//            int dir = 1;
+//            int s = 0;
+//            int e = size;
+//            int rem = 0;
+//            boolean all = count == 0;
+//            if (count < 0) {
+//                count = -count;
+//                dir = -1;
+//                s = e;
+//                e = -1;
+//            }
+//            for (int i = s; (all || count != 0) && i != e; i += dir) {
+//                if (list.get(i).equals(value)) {
+//                    list.remove(i);
+//                    e -= dir;
+//                    i -= dir;
+//                    rem++;
+//                    count--;
+//                }
+//            }
+//            return integer(rem);
+//        }
     }
 
     /**
