@@ -57,4 +57,8 @@ public class RedisBase {
 
     protected ExecutorService executorService = Executors.newCachedThreadPool();
 
+    protected static RedisException noSuchKey() {
+        return new RedisException("no such key");
+    }
+
 }

@@ -99,9 +99,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
         }
     }
 
-    private static RedisException noSuchKey() {
-        return new RedisException("no such key");
-    }
+
 
 
     /**
@@ -1116,18 +1114,22 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     @SuppressWarnings("unchecked")
     @Override
     public BulkReply lindex(byte[] key0, byte[] index1) throws RedisException {
-        int index = _toposint(index1);
-        List<BytesValue> list = _getlist(key0, true);
-        if (list == null || list.size() <= index) {
-            return NIL_REPLY;
-        } else {
-            return new BulkReply(list.get(index).getBytes());
-        }
+        return __lindex(key0, index1);
+//        int index = _toposint(index1);
+//
+//        List<BytesValue> list = _getlist(key0, true);
+//        if (list == null || list.size() <= index) {
+//            return NIL_REPLY;
+//        } else {
+//            return new BulkReply(list.get(index).getBytes());
+//        }
     }
 
     /**
      * Insert an element before or after another element in a list
      * List
+     * Linsert 命令用于在列表的元素前或者后插入元素。 当指定元素不存在于列表中时，不执行任何操作。 当列表不存在时，被视为空列表，
+     * 不执行任何操作。 如果 key 不是列表类型，返回一个错误。
      *
      * @param key0
      * @param where1
@@ -1137,15 +1139,19 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply linsert(byte[] key0, byte[] where1, byte[] pivot2, byte[] value3) throws RedisException {
-        Where where = Where.valueOf(new String(where1).toUpperCase());
-        List<BytesValue> list = _getlist(key0, true);
-        BytesKey pivot = new BytesKey(pivot2);
-        int i = list.indexOf(pivot);
-        if (i == -1) {
-            return integer(-1);
-        }
-        list.add(i + (where == Where.BEFORE ? 0 : 1), new BytesKey(value3));
-        return integer(list.size());
+
+        return __linsert(key0, where1, pivot2, value3);
+//
+//        Where where = Where.valueOf(new String(where1).toUpperCase());
+//        List<BytesValue> list = _getlist(key0, true);
+//        BytesKey pivot = new BytesKey(pivot2);
+//        int i = list.indexOf(pivot);
+//        if (i == -1) {
+//            return integer(-1);
+//        }
+//        list.add(i + (where == Where.BEFORE ? 0 : 1), new BytesKey(value3));
+//        return integer(list.size());
+
     }
 
     enum Where {BEFORE, AFTER}
@@ -1320,18 +1326,21 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public StatusReply lset(byte[] key0, byte[] index1, byte[] value2) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        if (list == null) {
-            throw noSuchKey();
-        }
-        int size = list.size();
-        int index = _toposint(index1);
-        if (index < size) {
-            list.set(index, new BytesKey(value2));
-            return OK;
-        } else {
-            throw invalidValue();
-        }
+
+        return __lset(key0, index1, value2);
+//
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null) {
+//            throw noSuchKey();
+//        }
+//        int size = list.size();
+//        int index = _toposint(index1);
+//        if (index < size) {
+//            list.set(index, new BytesKey(value2));
+//            return OK;
+//        } else {
+//            throw invalidValue();
+//        }
     }
 
     /**
