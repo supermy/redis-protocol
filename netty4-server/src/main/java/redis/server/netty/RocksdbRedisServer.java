@@ -1354,28 +1354,29 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public StatusReply ltrim(byte[] key0, byte[] start1, byte[] stop2) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        if (list == null) {
-            return OK;
-        } else {
-            int l = list.size();
-            int s = _torange(start1, l);
-            int e = _torange(stop2, l);
-
-            // Doesn't change expiration
-            data.put(key0, list.subList(s, e + 1));
-
-
-            try {
-                mydata.put(key0, ObjectToByte(list.subList(s, e + 1)));
-            } catch (RocksDBException e1) {
-                e1.printStackTrace();
-                throw new RuntimeException(e1.getMessage());
-            }
-
-
-            return OK;
-        }
+        return __ltrim(key0, start1, stop2);
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null) {
+//            return OK;
+//        } else {
+//            int l = list.size();
+//            int s = _torange(start1, l);
+//            int e = _torange(stop2, l);
+//
+//            // Doesn't change expiration
+//            data.put(key0, list.subList(s, e + 1));
+//
+//
+//            try {
+//                mydata.put(key0, ObjectToByte(list.subList(s, e + 1)));
+//            } catch (RocksDBException e1) {
+//                e1.printStackTrace();
+//                throw new RuntimeException(e1.getMessage());
+//            }
+//
+//
+//            return OK;
+//        }
     }
 
     /**

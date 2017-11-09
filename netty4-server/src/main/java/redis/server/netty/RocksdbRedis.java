@@ -8,19 +8,23 @@ import org.rocksdb.util.SizeUnit;
 import redis.netty4.*;
 import redis.util.*;
 
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.*;
 
+
 import static java.lang.Double.parseDouble;
 import static java.lang.Integer.MAX_VALUE;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
+import static redis.server.netty.RocksdbRedis.ListMeta.*;
 import static redis.util.Encoding.bytesToNum;
 import static redis.util.Encoding.numToBytes;
+
 
 /**
  * Rocksdb 相关的方法操作
@@ -68,6 +72,215 @@ public class RocksdbRedis extends RedisBase {
         return Long.parseLong(s);
     }
 
+
+    protected static int __torange(byte[] offset1, long length) throws RedisException {
+        long offset = bytesToLong(offset1);
+        if (offset > MAX_VALUE) {
+            throw notInteger();
+        }
+        if (offset < 0) {
+//            offset = (length + offset + 1);
+            offset = (length + offset);
+        }
+        if (offset >= length) {
+//            offset = length - 1;
+            offset = length;
+        }
+        return (int) offset;
+    }
+
+    /**
+     * List 数据类型枚举
+     */
+    enum ListMeta {
+        COUNT, SSEQ, ESEQ, CSEQ
+    }
+
+    //list meta key
+
+    /**
+     * 导航索引
+     *
+     * @param key0
+     * @param name
+     * @return
+     */
+    protected Long getListMeta(byte[] key0, ListMeta fd) throws RedisException {
+        //获取元数据的索引值
+        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
+
+        byte[] valMeta = __get(mymeta, keyMeta); //'0,2'  开始指针，结束指针
+
+        long result = 0;
+
+        if (valMeta == null) {
+
+            throw notListMeta();
+
+        } else {
+            ByteBuf metaBuf = Unpooled.wrappedBuffer(valMeta);
+
+
+            long count = metaBuf.readLong();
+            long sseq = metaBuf.readLong();
+            long eseq = metaBuf.readLong();
+            long cseq = metaBuf.readLong();
+            System.out.println(String.format("List Meta:count:%d,first:%d,end:%d,auto:%d", count, sseq, eseq, cseq));
+
+            switch (fd) {
+
+                case COUNT:
+                    result = metaBuf.getLong(0);
+                    break;
+
+                case SSEQ:
+                    result = metaBuf.getLong(8);
+                    break;
+
+                case ESEQ:
+                    result = metaBuf.getLong(16);
+                    break;
+
+                case CSEQ:
+                    result = metaBuf.getLong(24);
+                    break;
+
+                default:
+                    System.out.println("default");
+                    throw notListMeta();
+            }
+
+        }
+        return result;
+    }
+
+
+
+    /**
+     * @param key0
+     * @param start1
+     * @param stop2
+     * @return
+     * @throws RedisException
+     */
+    protected StatusReply __ltrim(byte[] key0, byte[] start1, byte[] stop2) throws RedisException {
+
+
+        long count = getListMeta(key0, COUNT); // FIXME: 2017/11/9  三次访问
+        Long sseq = getListMeta(key0, SSEQ);
+        long eseq = getListMeta(key0, ESEQ);
+        long cseq = getListMeta(key0, CSEQ);
+
+        long s = __torange(start1, count);
+        long e = __torange(stop2, count);
+
+        if (e < s) e = s;
+        long length = e - s;
+
+        System.out.println(String.format("开始数据 %d 结束数据 %d:", s, e));
+
+
+        //生成获取头部元素的 key
+        byte[] keyPre = __genkey("_l".getBytes(), key0, "#".getBytes());
+        ByteBuf keyPreBuf = Unpooled.wrappedBuffer(keyPre);
+        ByteBuf startBuf = Unpooled.buffer(8);
+
+        JsonObject jo = new JsonObject();
+
+        long cnt = count;
+        long it = sseq;
+
+
+        //获取范围内的元素;不删除原有数据;遍历
+        for (long i = 0; i <= count ; i++) {
+            System.out.println(String.format(" 迭代号: %d", it));
+
+            //遍历元素 key
+            startBuf.resetWriterIndex();
+            startBuf.writeLong(it);
+
+            ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf, startBuf);
+
+
+            byte[] key = keyBuf.readBytes(keyBuf.readableBytes()).array();
+            System.out.println("3333333333333"+new String(key));
+
+            //获取数据
+            byte[] vals = __getValueList(mydata, key, jo);
+
+
+            if (i < s ) {
+                System.out.println("44444444444"+jo);
+
+                //首位置
+                sseq = jo.get("nseq").getAsLong();
+
+                __del(key);
+                cnt--;
+            }
+
+            if (i > e) {
+                System.out.println("555555555"+jo);
+
+                //尾位置
+                eseq = jo.get("pseq").getAsLong();
+
+                __del(key);
+                cnt--;
+            }
+
+
+            //链表遍历
+            it = jo.get("nseq").getAsLong();
+
+            if (it == -1) {
+                break;
+            }
+
+        }
+
+        if(cnt == count || cnt <=0 ){
+            return OK;
+        }
+
+        System.out.println("555555555"+sseq);
+        System.out.println("555555555"+eseq);
+
+//        byte[] keyPre = __genkey("_l".getBytes(), key0, "#".getBytes());
+//        ByteBuf keyPreBuf = Unpooled.wrappedBuffer(keyPre);
+
+        //修正结束节点
+        jo.addProperty("pseq",eseq);
+        jo.addProperty("nseq",-1);
+        fixPNode(startBuf,keyPreBuf,jo);
+
+        //修正开始节点
+        jo.addProperty("nseq",sseq);
+        jo.addProperty("pseq",-1);
+        fixNnode(startBuf,keyPreBuf,jo);
+
+
+        ByteBuf metaBuf = Unpooled.buffer(24);
+
+        metaBuf.writeLong(cnt);  //数量
+
+        metaBuf.writeLong(sseq);    //第一个元素
+        metaBuf.writeLong(eseq);    //最后一个元素
+
+        metaBuf.writeLong(cseq);    //最新主键编号
+
+        System.out.println(String.format("count:%d 第一：%d 最后：%d 自增：%d", cnt, sseq, eseq, cseq));
+
+        metaBuf.resetReaderIndex();
+
+        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
+        __put(mymeta, keyMeta, metaBuf.readBytes(metaBuf.readableBytes()).array(), -1);
+
+
+        return OK;
+    }
+
+
     /**
      * Linsert 命令用于在列表的元素前或者后插入元素。 当指定元素不存在于列表中时，不执行任何操作。 当列表不存在时，被视为空列表，
      * 不执行任何操作。 如果 key 不是列表类型，返回一个错误。
@@ -80,7 +293,7 @@ public class RocksdbRedis extends RedisBase {
      * @throws RedisException
      */
     protected IntegerReply __linsert(byte[] key0, byte[] where1, byte[] pivot2, byte[] value3) throws RedisException {
-        boolean isBefore = Arrays.equals("BEFORE".getBytes(), where1) || Arrays.equals("before".getBytes(), where1)? true : false; //false = after
+        boolean isBefore = Arrays.equals("BEFORE".getBytes(), where1) || Arrays.equals("before".getBytes(), where1) ? true : false; //false = after
 
         System.out.println("数据值插入位置 before：" + isBefore);
 
@@ -157,7 +370,7 @@ public class RocksdbRedis extends RedisBase {
                         //新增节点编号
                         cseq = Math.incrementExact(cseq);
 
-                        System.out.println(String.format("数据值插入位置 before %s 编号：%d", isBefore,cseq));
+                        System.out.println(String.format("数据值插入位置 before %s 编号：%d", isBefore, cseq));
 
 
                         //修改当前节点；
@@ -193,7 +406,7 @@ public class RocksdbRedis extends RedisBase {
                         //新增节点编号
                         cseq = Math.incrementExact(cseq);
 
-                        System.out.println(String.format("数据值插入位置 before %s 编号：%d", isBefore,cseq));
+                        System.out.println(String.format("数据值插入位置 before %s 编号：%d", isBefore, cseq));
 
 
                         //修改当前节点；
@@ -1962,6 +2175,7 @@ public class RocksdbRedis extends RedisBase {
         try {
             values = db.get(key0);
 
+            System.out.println("get value:" + values);
             System.out.println("get value:" + new String(values));
 
         } catch (RocksDBException e) {

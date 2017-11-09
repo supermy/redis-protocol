@@ -47,6 +47,10 @@ public class RedisBase {
         return new RedisException("value is not an integer or out of range");
     }
 
+    protected static RedisException notListMeta() {
+        return new RedisException("list value no such key");
+    }
+
     protected static RedisException notFloat() {
         return new RedisException("value is not a float or out of range");
     }
