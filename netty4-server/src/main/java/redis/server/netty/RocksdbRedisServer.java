@@ -1388,15 +1388,18 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public BulkReply rpop(byte[] key0) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        int l;
-        if (list == null || (l = list.size()) == 0) {
-            return NIL_REPLY;
-        } else {
-            byte[] bytes = list.get(l - 1).getBytes();
-            list.remove(l - 1);
-            return new BulkReply(bytes);
-        }
+        return __rpop(key0);
+
+//        List<BytesValue> list = _getlist(key0, false);
+//        int l;
+//        if (list == null || (l = list.size()) == 0) {
+//            return NIL_REPLY;
+//        } else {
+//            byte[] bytes = list.get(l - 1).getBytes();
+//            list.remove(l - 1);
+//            return new BulkReply(bytes);
+//        }
+//
     }
 
     /**
@@ -1449,13 +1452,21 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply rpushx(byte[] key0, byte[] value1) throws RedisException {
-        List<BytesValue> list = _getlist(key0, false);
-        if (list == null) {
+        if(__llen(key0).data() == 0){
             return integer(0);
-        } else {
-            list.add(new BytesKey(value1));
-            return integer(list.size());
+        }else{
+            byte[][] vals=new byte[1][];
+            vals[0]=value1;
+            return __rpush(key0, vals);
         }
+
+//        List<BytesValue> list = _getlist(key0, false);
+//        if (list == null) {
+//            return integer(0);
+//        } else {
+//            list.add(new BytesKey(value1));
+//            return integer(list.size());
+//        }
     }
 
 
