@@ -21,7 +21,6 @@ import static java.lang.Integer.MAX_VALUE;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
-import static redis.server.netty.RocksdbRedis.ListMeta.*;
 import static redis.util.Encoding.bytesToNum;
 import static redis.util.Encoding.numToBytes;
 
@@ -89,12 +88,12 @@ public class RocksdbRedis extends RedisBase {
         return (int) offset;
     }
 
-    /**
-     * List 数据类型枚举
-     */
-    enum ListMeta {
-        COUNT, SSEQ, ESEQ, CSEQ
-    }
+//    /**
+//     * List 数据类型枚举
+//     */
+//    enum ListMeta {
+//        COUNT, SSEQ, ESEQ, CSEQ
+//    }
 
     //list meta key
 
@@ -105,56 +104,60 @@ public class RocksdbRedis extends RedisBase {
      * @param name
      * @return
      */
-    protected Long getListMeta(byte[] key0, ListMeta fd) throws RedisException {
+//    protected Long getListMeta(byte[] key0, ListMeta fd) throws RedisException {
         //获取元数据的索引值
-        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
-
-        byte[] valMeta = __get(mymeta, keyMeta); //'0,2'  开始指针，结束指针
-
-        long result = 0;
-
-        if (valMeta == null) {
-
-            throw notListMeta();
-
-        } else {
-            ByteBuf metaBuf = Unpooled.wrappedBuffer(valMeta);
-
-
-            long count = metaBuf.readLong();
-            long sseq = metaBuf.readLong();
-            long eseq = metaBuf.readLong();
-            long cseq = metaBuf.readLong();
-            System.out.println(String.format("List Meta:count:%d,first:%d,end:%d,auto:%d", count, sseq, eseq, cseq));
-
-            switch (fd) {
-
-                case COUNT:
-                    result = metaBuf.getLong(0);
-                    break;
-
-                case SSEQ:
-                    result = metaBuf.getLong(8);
-                    break;
-
-                case ESEQ:
-                    result = metaBuf.getLong(16);
-                    break;
-
-                case CSEQ:
-                    result = metaBuf.getLong(24);
-                    break;
-
-                default:
-                    System.out.println("default");
-                    throw notListMeta();
-            }
-
-        }
-        return result;
-    }
+//        byte[] keyMeta = __genkey("+".getBytes(), key0, "list".getBytes());
+//
+//        byte[] valMeta = __get(mymeta, keyMeta); //'0,2'  开始指针，结束指针
+//
+//        long result = 0;
+//
+//        if (valMeta == null) {
+//
+//            throw notListMeta();
+//
+//        } else {
+//            ByteBuf metaBuf = Unpooled.wrappedBuffer(valMeta);
+//
+//
+//            long count = metaBuf.readLong();
+//            long sseq = metaBuf.readLong();
+//            long eseq = metaBuf.readLong();
+//            long cseq = metaBuf.readLong();
+//            System.out.println(String.format("List Meta:count:%d,first:%d,end:%d,auto:%d", count, sseq, eseq, cseq));
+//
+//            switch (fd) {
+//
+//                case COUNT:
+//                    result = metaBuf.getLong(0);
+//                    break;
+//
+//                case SSEQ:
+//                    result = metaBuf.getLong(8);
+//                    break;
+//
+//                case ESEQ:
+//                    result = metaBuf.getLong(16);
+//                    break;
+//
+//                case CSEQ:
+//                    result = metaBuf.getLong(24);
+//                    break;
+//
+//                default:
+//                    System.out.println("default");
+//                    throw notListMeta();
+//            }
+//
+//        }
+//        return result;
+//    }
 
     protected BulkReply __rpop(byte[] key0) throws RedisException {
+
+//        ListMeta meta = new ListMeta(mymeta,key0,false);
+//        meta.rpop();
+
 
         //初始化List 开始于结束指针
         long count = 0;
@@ -370,7 +373,7 @@ public class RocksdbRedis extends RedisBase {
      */
     protected StatusReply __ltrim(byte[] key0, byte[] start1, byte[] stop2) throws RedisException {
 
-        redis.server.netty.ListMeta meta=new redis.server.netty.ListMeta(mydata,key0);
+        redis.server.netty.ListMeta meta=new redis.server.netty.ListMeta(mydata,key0,false);
 
 //        long count = getListMeta(key0, COUNT); // FIXME: 2017/11/9  三次访问
 //        Long sseq = getListMeta(key0, SSEQ);

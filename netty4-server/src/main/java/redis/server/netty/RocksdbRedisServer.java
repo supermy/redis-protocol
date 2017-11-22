@@ -1199,6 +1199,10 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
     @Override
     public IntegerReply lpush(byte[] key0, byte[][] value1) throws RedisException {
         return __lpush(key0, value1);
+
+//        ListMeta meta0=new ListMeta(RocksdbRedis.mymeta,key0,true);
+//        return meta0.lpush(value1);
+
 //        List<BytesValue> list = _getlist(key0, true);
 //        for (byte[] value : value1) {
 //            list.add(0, new BytesKey(value));
