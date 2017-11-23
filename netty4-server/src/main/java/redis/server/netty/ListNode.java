@@ -18,6 +18,14 @@ import static redis.server.netty.ListNode.Meta.*;
  */
 public class ListNode {
 
+    public boolean isFirst() throws RedisException {
+        return getPseq()==-1;
+    }
+
+    public boolean isLast() throws RedisException {
+        return getNseq()==-1;
+    }
+
     enum Meta {
         KEY, SEQ, TTL, SIZE, PSEQ, NSEQ
     }
@@ -129,7 +137,6 @@ public class ListNode {
 
             ByteBuf valueBuf1 = Unpooled.wrappedBuffer(values);
 
-                    System.out.println("'''''''''''''''");
 
             System.out.println(new String(values));
 //            System.out.println(values.length);
@@ -211,6 +218,13 @@ public class ListNode {
         return get(PSEQ);
     }
 
+    public ListNode prev() throws RedisException {
+        if(getPseq() == -1){
+            return null;
+        }
+        return new ListNode(RocksdbRedis.mydata,getKey0(),getPseq() );
+    }
+
     public ListNode setPseq(long val) throws RedisException {
         set(PSEQ, val);
         return this;
@@ -226,8 +240,16 @@ public class ListNode {
         return get(NSEQ);
     }
 
-    public void setNseq(long val) throws RedisException {
+    public ListNode next() throws RedisException {
+        if(getNseq() == -1){
+            return null;
+        }
+        return new ListNode(RocksdbRedis.mydata,getKey0(),getNseq());
+    }
+
+    public ListNode setNseq(long val) throws RedisException {
         set(NSEQ, val);
+        return this;
     }
 
 
