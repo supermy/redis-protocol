@@ -29,8 +29,8 @@ import static redis.util.Encoding.numToBytes;
  * Rocksdb 相关的方法操作
  * <p>
  * 核心指令 __put  __get  __del  __exists
- * __keys  按前缀检索
- * __hkeys 按前缀检索
+ * keys  按前缀检索
+ * hkeys 按前缀检索
  * __hput __inclHMeta Hash 指令
  * __hget
  * __hdel __reduHMeta

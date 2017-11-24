@@ -426,7 +426,7 @@ public class ListMeta {
 
     }
 
-    public IntegerReply rpush(byte[][] value1) throws RedisException {
+    public IntegerReply rpush(byte[]... value1) throws RedisException {
         //批量处理
         final WriteOptions writeOpt = new WriteOptions();
         final WriteBatch batch = new WriteBatch();
@@ -569,22 +569,22 @@ public class ListMeta {
      * @return
      * @throws RedisException
      */
-    @Deprecated
-    public BulkReply rpoplpush(byte[] source0, byte[] destination1) throws RedisException {
-
+//    @Deprecated
+//    public BulkReply rpoplpush(byte[] source0, byte[] destination1) throws RedisException {
 //
-//        List<BytesValue> source = _getlist(source0, false);
-//        int l;
-//        if (source == null || (l = source.size()) == 0) {
-//            return NIL_REPLY;
-//        } else {
-//            List<BytesValue> dest = _getlist(destination1, true);
-//            BytesValue popped = source.get(l - 1);
-//            source.remove(l - 1);
-//            dest.add(0, popped);
-//            return new BulkReply(popped.getBytes());
-//        }
-    }
+////
+////        List<BytesValue> source = _getlist(source0, false);
+////        int l;
+////        if (source == null || (l = source.size()) == 0) {
+////            return NIL_REPLY;
+////        } else {
+////            List<BytesValue> dest = _getlist(destination1, true);
+////            BytesValue popped = source.get(l - 1);
+////            source.remove(l - 1);
+////            dest.add(0, popped);
+////            return new BulkReply(popped.getBytes());
+////        }
+//    }
 
     public StatusReply lset(byte[] index1, byte[] value2) throws RedisException {
         int i = RocksdbRedis.bytesToInt(index1);
