@@ -5,6 +5,9 @@ import io.netty.buffer.Unpooled;
 import org.junit.Assert;
 import org.rocksdb.*;
 import redis.netty4.BulkReply;
+import redis.netty4.IntegerReply;
+import redis.netty4.MultiBulkReply;
+import redis.netty4.Reply;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,41 +15,42 @@ import java.util.List;
 import java.util.Map;
 
 import static redis.netty4.BulkReply.NIL_REPLY;
+import static redis.netty4.IntegerReply.integer;
 
 
 /**
- * Hash Meta 元素方便促常用操作
+ * String Meta 元素方便促常用操作
  * <p>
- * Created by moyong on 2017/11/23.
+ * Created by moyong on 2017/11/29.
  */
-public class HashNode {
-    public static final HashNode NIL_HashNode= new HashNode(RocksdbRedis.mydata);
+public class StringNode {
+    public static final StringNode NIL_HashNode = new StringNode(RocksdbRedis.mydata);
 
-    private static final   byte[] PRE = "_h".getBytes();
-    private static final   byte[] SPLIT = "#".getBytes();
+    private static final byte[] PRE = "_k".getBytes();
+    private static final byte[] SPLIT = "#".getBytes();
 
 
     private RocksDB db;
 
-    private byte[] key;
-    private byte[] field;
 
     private ByteBuf keyBuf;
     private ByteBuf valBuf;
 
-    public ByteBuf data() {
+    public ByteBuf key() {
+        return keyBuf;
+    }
+
+    public ByteBuf value() {
         return valBuf;
     }
 
-    private HashNode(RocksDB db) {
+    private StringNode(RocksDB db) {
         db = RocksdbRedis.mydata;
 
         keyBuf = null;
         valBuf = null;
-
-        field = null;
-        key = null;
     }
+
     /**
      * 创建元素
      *
@@ -56,45 +60,71 @@ public class HashNode {
      * @param val0
      * @throws RedisException
      */
-    public HashNode(RocksDB db0, byte[] key0, byte[] field0, byte[] val0) throws RedisException {
+    public StringNode(RocksDB db0, byte[] key0, byte[] val0) throws RedisException {
         this.db = db0;
-        this.key = key0;
-        this.field = field0;
-        create(val0);
+        create(key0, val0);
     }
 
-    protected void create(byte[] val0) throws RedisException {
-        keyBuf = Unpooled.wrappedBuffer(PRE, key, SPLIT,field);
+    public StringNode(RocksDB db0, byte[] key0, byte[] val0,byte[] ttl) throws RedisException {
+        this.db = db0;
+        create(key0, val0,ttl);
+    }
 
-        ByteBuf ttlBuf  = Unpooled.buffer(28);
+
+    protected void create(byte[] key0, byte[] val0) throws RedisException {
+        keyBuf = Unpooled.wrappedBuffer(PRE, key0);
+
+        ByteBuf ttlBuf = Unpooled.buffer(12);
         ttlBuf.writeLong(-1); //ttl 无限期 -1
         ttlBuf.writeInt(val0.length); //value size
 
         ByteBuf val0Buf = Unpooled.wrappedBuffer(val0);
 
-        valBuf= Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
+        valBuf = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
 
         try {
-            db.put(getKey(),getVal());
+            db.put(getKey(), getVal());
+
         } catch (RocksDBException e) {
             throw new RedisException(e.getMessage());
+
         }
     }
 
+    protected void create(byte[] key0, byte[] val0,byte[] ttl) throws RedisException {
+        keyBuf = Unpooled.wrappedBuffer(PRE, key0);
+
+
+        ByteBuf ttlBuf = Unpooled.buffer(12);
+        ttlBuf.writeLong(RocksdbRedis.bytesToLong(ttl)); //ttl 无限期 -1
+        ttlBuf.writeInt(val0.length); //value size
+
+        ByteBuf val0Buf = Unpooled.wrappedBuffer(val0);
+
+        valBuf = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
+
+        try {
+            db.put(getKey(), getVal());
+
+        } catch (RocksDBException e) {
+            throw new RedisException(e.getMessage());
+
+        }
+    }
+
+
+
     /**
      * 数据初始化
-     *
      *
      * @param db0
      * @param key0
      * @param field0
      * @throws RedisException
      */
-    public HashNode(RocksDB db0, byte[] key0, byte[] field0) throws RedisException {
+    public StringNode(RocksDB db0, byte[] key0) throws RedisException {
         this.db = db0;
-        this.key = key0;
-        this.field = field0;
-        keyBuf = Unpooled.wrappedBuffer(PRE, key, SPLIT,field);
+        keyBuf = Unpooled.wrappedBuffer(PRE, key0);
         get();
     }
 
@@ -111,12 +141,13 @@ public class HashNode {
     private void get() throws RedisException {
         try {
 
+            if (keyBuf == null) {
+                throw new RedisException(String.format("主键不能为空"));
+            }
             byte[] values = db.get(getKey());
 
-            if(values == null){
-                //throw new RedisException(String.format("没有如此的主键:%s|%s", getKey0Str(),getField0Str()));
-//                return;
-                valBuf =null;
+            if (values == null) {
+                valBuf = null;
                 return;
             }
 
@@ -126,12 +157,12 @@ public class HashNode {
             //数据过期处理
             if (getTtl() < now() && getTtl() != -1) {
                 db.delete(getKey());
-                throw new RedisException(String.format("没有如此的主键:%s|%s", getKey0Str(),getField0Str()));
+                throw new RedisException(String.format("没有如此的主键:%s", getKey0Str()));
             }
 
         } catch (RocksDBException e) {
             e.printStackTrace();
-            throw new RedisException(String.format("没有如此的主键:%s|%s", getKey0Str(),getField0Str()));
+            throw new RedisException(String.format("没有如此的主键:%s", getKey0Str()));
         }
     }
 
@@ -157,23 +188,20 @@ public class HashNode {
     }
 
     public void setVal(byte[] val0) throws RedisException {
-        ByteBuf ttlBuf  = Unpooled.buffer(28);
+        ByteBuf ttlBuf = Unpooled.buffer(28);
         ttlBuf.writeLong(-1); //ttl 无限期 -1
         ttlBuf.writeInt(val0.length); //value size
 
         ByteBuf val0Buf = Unpooled.wrappedBuffer(val0);
 
-        valBuf= Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
+        valBuf = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
     }
-
-
 
     public void setKey0(byte[] key0) throws RedisException {
-        key=key0;
-        keyBuf = Unpooled.wrappedBuffer(PRE, key, SPLIT,field);
+        keyBuf = Unpooled.wrappedBuffer(PRE, key0);
     }
 
-    private static long  now() {
+    private static long now() {
         return System.currentTimeMillis();
     }
 
@@ -184,32 +212,34 @@ public class HashNode {
      * @return
      */
     public static byte[] genKeyPartten(byte[] metakey0) {
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(PRE, metakey0, SPLIT);
+        ByteBuf byteBuf = Unpooled.wrappedBuffer(PRE, metakey0);
         return byteBuf.readBytes(byteBuf.readableBytes()).array();
     }
 
     /**
      * 构造字段 Key,用来获取字段数据
+     *
      * @param metakey0
      * @param field0
      * @return
      */
-    public static byte[] genKey(byte[] metakey0,byte[] field0) {
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(PRE, metakey0, SPLIT,field0);
+    public static byte[] genKey(byte[] metakey0) {
+        ByteBuf byteBuf = Unpooled.wrappedBuffer(PRE, metakey0);
         return byteBuf.readBytes(byteBuf.readableBytes()).array();
     }
 
 
-    protected static byte[] parseHField(byte[] metakey0,byte[] value) throws RedisException {
-
-        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //优化 零拷贝
-        ByteBuf slice = valueBuf.slice(3 + metakey0.length, value.length - 3 - metakey0.length);
-
-        return slice.readBytes(slice.readableBytes()).array();
-    }
+//    protected static byte[] parseHField(byte[] metakey0,byte[] value) throws RedisException {
+//
+//        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //优化 零拷贝
+//        ByteBuf slice = valueBuf.slice(3 + metakey0.length, value.length - 3 - metakey0.length);
+//
+//        return slice.readBytes(slice.readableBytes()).array();
+//    }
 
     /**
      * 合成 Value 直接存储
+     *
      * @param value
      * @param expiration
      * @return
@@ -238,6 +268,7 @@ public class HashNode {
         if (values != null) {
 
             ByteBuf vvBuf = Unpooled.wrappedBuffer(values);
+
             vvBuf.resetReaderIndex();
             ByteBuf ttlBuf = vvBuf.readSlice(8);
             ByteBuf sizeBuf = vvBuf.readSlice(4);
@@ -305,7 +336,6 @@ public class HashNode {
     }
 
 
-
     protected static List<byte[]> keyVals(RocksDB data, byte[] pattern0) throws RedisException {
 
         //按 key 检索所有数据
@@ -330,6 +360,7 @@ public class HashNode {
 //                        if (value != null) {
                         keys.add(iterator.key());
                         keys.add(iterator.value());
+//                                                System.out.println(new String(iterator.key()));
 
 //                        }
 
@@ -354,6 +385,7 @@ public class HashNode {
         return keys;
     }
 
+
     protected static List<BulkReply> __mget(List<byte[]> listFds) throws RedisException {
         List<BulkReply> list = new ArrayList<BulkReply>();
 
@@ -361,7 +393,7 @@ public class HashNode {
             Map<byte[], byte[]> fvals = RocksdbRedis.mydata.multiGet(listFds);
             for (byte[] fk : listFds
                     ) {
-                byte[] val = HashNode.parseValue(RocksdbRedis.mydata, fk, fvals.get(fk));
+                byte[] val = StringNode.parseValue(RocksdbRedis.mydata, fk, fvals.get(fk));
                 if (val != null) {
                     list.add(new BulkReply(val));
                 } else list.add(NIL_REPLY);
@@ -379,7 +411,7 @@ public class HashNode {
         final WriteBatch batch = new WriteBatch();
         for (int i = 0; i < field_or_value1.length; i += 2) {
 
-            byte[] val = HashNode.genVal(field_or_value1[i + 1], -1);
+            byte[] val = StringNode.genVal(field_or_value1[i + 1], -1);
 
             batch.put(field_or_value1[i], val);
             //fixme  通过 keys 获取数量
@@ -404,36 +436,35 @@ public class HashNode {
     }
 
     public byte[] getKey() {
-        keyBuf.resetReaderIndex();
-        return keyBuf.readBytes(keyBuf.readableBytes()).array();
+        if (keyBuf == null) {
+            return null;
+        } else {
+            keyBuf.resetReaderIndex();
+            return keyBuf.readBytes(keyBuf.readableBytes()).array();
+        }
     }
 
     public byte[] getKey0() throws RedisException {
-        return key;
+        if (keyBuf == null) {
+            return null;
+        } else {
+            keyBuf.resetReaderIndex();
+            ByteBuf key0Buf = keyBuf.slice(2, keyBuf.readableBytes() - 2);
+            return key0Buf.readBytes(key0Buf.readableBytes()).array();
+        }
     }
 
     public String getKey0Str() throws RedisException {
-        return  new String(getKey0());
+        return new String(getKey0());
     }
-
-    public byte[] getField0() throws RedisException {
-       return field;
-    }
-
-    public String getField0Str() throws RedisException {
-        return  new String(getField0());
-    }
-
-
-    public void setField0(byte[] pval) throws RedisException {
-        field=pval;
-        keyBuf = Unpooled.wrappedBuffer(PRE, key, SPLIT,field);
-    }
-
 
     public byte[] getVal() {
-        valBuf.resetReaderIndex();
-        return valBuf.readBytes(valBuf.readableBytes()).array();
+        if (valBuf == null) {
+            return null;
+        } else {
+            valBuf.resetReaderIndex();
+            return valBuf.readBytes(valBuf.readableBytes()).array();
+        }
     }
 
     public byte[] getVal0() throws RedisException {
@@ -452,14 +483,12 @@ public class HashNode {
         return valueBuf.readBytes(valueBuf.readableBytes()).array();
     }
 
-    public String getVal0Str() throws  RedisException {
+    public String getVal0Str() throws RedisException {
         return new String(getVal0());
     }
 
     public String info() throws RedisException {
         StringBuilder sb = new StringBuilder(getKey0Str());
-        sb.append("|");
-        sb.append(getField0Str());
         sb.append("=");
         sb.append(getVal0Str());
 
@@ -477,34 +506,29 @@ public class HashNode {
 
     public static void main(String[] args) throws Exception {
 //
-        HashNode meta = new HashNode(RocksdbRedis.mydata, "HashTest".getBytes(), "f1".getBytes(), "value".getBytes());
+        StringNode meta = new StringNode(RocksdbRedis.mydata, "StringTest".getBytes(), "value".getBytes());
         meta.info();
 
-        Assert.assertEquals(meta.getSize(),5);
-        Assert.assertArrayEquals(meta.getField0(),"f1".getBytes());
-        Assert.assertArrayEquals(meta.getKey0(),"HashTest".getBytes());
-        Assert.assertArrayEquals(meta.getVal0(),"value".getBytes());
+        Assert.assertEquals(meta.getSize(), 5);
+        Assert.assertArrayEquals(meta.getKey0(), "StringTest".getBytes());
+        Assert.assertArrayEquals(meta.getVal0(), "value".getBytes());
 
         meta.setKey0("abc".getBytes());
-        meta.setField0("f2".getBytes());
         meta.setVal("v1".getBytes());
 
-        Assert.assertArrayEquals(meta.getKey0(),"abc".getBytes());
-        Assert.assertArrayEquals(meta.getField0(),"f2".getBytes());
-        Assert.assertArrayEquals(meta.getVal0(),"v1".getBytes());
+        Assert.assertArrayEquals(meta.getKey0(), "abc".getBytes());
+        Assert.assertArrayEquals(meta.getVal0(), "v1".getBytes());
 
         meta.info();
 
         meta.flush();
 
-        HashNode meta1 = new HashNode(RocksdbRedis.mydata,"abc".getBytes(), "f2".getBytes());
+        StringNode meta1 = new StringNode(RocksdbRedis.mydata, "abc".getBytes());
 
         meta1.info();
 
-        Assert.assertArrayEquals(meta1.getKey0(),"abc".getBytes());
-        Assert.assertArrayEquals(meta1.getField0(),"f2".getBytes());
-        Assert.assertArrayEquals(meta1.getVal0(),"v1".getBytes());
-
+        Assert.assertArrayEquals(meta1.getKey0(), "abc".getBytes());
+        Assert.assertArrayEquals(meta1.getVal0(), "v1".getBytes());
 
     }
 

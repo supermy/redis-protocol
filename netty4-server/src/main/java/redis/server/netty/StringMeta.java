@@ -5,32 +5,31 @@ import io.netty.buffer.Unpooled;
 import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
-import org.rocksdb.WriteBatch;
-import org.rocksdb.WriteOptions;
 import redis.netty4.*;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 import static java.lang.Double.parseDouble;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
+import static redis.server.netty.RedisBase.invalidValue;
+import static redis.server.netty.RocksdbRedis._toposint;
 import static redis.util.Encoding.bytesToNum;
 
 
 /**
- * List Meta 元素方便促常用操作
+ * String Meta 元素方便促常用操作
  * <p>
- * Created by moyong on 2017/11/9.
+ * Created by moyong on 2017/11/29.
  */
-public class HashMeta {
+public class StringMeta {
 
     private static byte[] PRE = "+".getBytes();
-    private static byte[] SUF = "hash".getBytes();
+    private static byte[] SUF = "string".getBytes();
 
     private RocksDB db;
 
@@ -46,16 +45,16 @@ public class HashMeta {
      * @return
      * @throws RedisException
      */
-    public HashMeta create(RocksDB db0, byte[] key0, long count) throws RedisException {
-        return new HashMeta(db0, key0, count);
+    public StringMeta create(RocksDB db0, byte[] key0, long count) throws RedisException {
+        return new StringMeta(db0, key0, count);
     }
 
-    public HashMeta(RocksDB db0, byte[] key0, long count) throws RedisException {
+    public StringMeta(RocksDB db0, byte[] key0, long count) throws RedisException {
         this.db = db0;
         create(key0, count);
     }
 
-    protected HashMeta create(byte[] key0, long count) throws RedisException {
+    protected StringMeta create(byte[] key0, long count) throws RedisException {
         this.metaKey = Unpooled.wrappedBuffer(PRE, key0, SUF);
 
         this.metaVal = Unpooled.buffer(8);
@@ -83,8 +82,8 @@ public class HashMeta {
      * @return
      * @throws RedisException
      */
-    public HashMeta get(RocksDB db0, byte[] key0, boolean notExsitCreate) throws RedisException {
-        return new HashMeta(db0, key0, notExsitCreate);
+    public StringMeta get(RocksDB db0, byte[] key0, boolean notExsitCreate) throws RedisException {
+        return new StringMeta(db0, key0, notExsitCreate);
     }
 
     /**
@@ -93,13 +92,13 @@ public class HashMeta {
      * @param key
      * @throws RedisException
      */
-    public HashMeta(RocksDB db0, byte[] key0, boolean notExsitCreate) throws RedisException {
+    public StringMeta(RocksDB db0, byte[] key0, boolean notExsitCreate) throws RedisException {
         this.db = db0;
         this.metaKey = Unpooled.wrappedBuffer(PRE, key0, SUF);
         get(notExsitCreate);
     }
 
-    private HashMeta get(boolean notExsitCreate) throws RedisException {
+    private StringMeta get(boolean notExsitCreate) throws RedisException {
 
         try {
             byte[] values = db.get(getKey());
@@ -133,7 +132,7 @@ public class HashMeta {
 
     public byte[] getKey0() throws RedisException {
         metaKey.resetReaderIndex();
-        ByteBuf bb = metaKey.slice(1, metaKey.readableBytes() - 5);
+        ByteBuf bb = metaKey.slice(1, metaKey.readableBytes() - 7);
         return bb.readBytes(bb.readableBytes()).array();
     }
 
@@ -228,7 +227,7 @@ public class HashMeta {
         return sb.toString();
     }
 
-    public HashMeta init() throws RedisException {
+    public StringMeta init() throws RedisException {
         create(getKey0(), 0);
         return this;
     }
@@ -238,19 +237,19 @@ public class HashMeta {
         try {
             db.delete(getKey());
 
-            List<String> strings = hkeys().asStringList(Charset.defaultCharset());
-
-//                            System.out.println(strings.size());
-
-            for (String str:strings
-                 ) {
-//                System.out.println(getKey0Str());
-//                System.out.println(str);
-                byte[] key = HashNode.genKey(getKey0(), str.getBytes());
-//                System.out.println(new String(key));
-
-                RocksdbRedis.mydata.delete(key);
-            }
+//            List<String> strings = hkeys().asStringList(Charset.defaultCharset());
+//
+////                            System.out.println(strings.size());
+//
+//            for (String str:strings
+//                 ) {
+////                System.out.println(getKey0Str());
+////                System.out.println(str);
+//                byte[] key = HashNode.genKey(getKey0(), str.getBytes());
+////                System.out.println(new String(key));
+//
+//                RocksdbRedis.mydata.delete(key);
+//            }
         } catch (RocksDBException e) {
             throw new RedisException(e.getMessage());
         }
@@ -264,37 +263,249 @@ public class HashMeta {
      * @return
      * @throws RedisException
      */
-    public IntegerReply hset(byte[] field1, byte[] value2) throws RedisException {
-//        System.out.println(new String(getKey0()));
-        HashNode newnode = new HashNode(RocksdbRedis.mydata, getKey0(), field1, value2);
-        //fixme 影响性能 覆盖还是新增不确定
-//        incrCount();
-//        flush();
-//        return put == null ? integer(0) : integer(1);
-        return integer(1);
+    public StatusReply set(byte[] value2) throws RedisException {
+        StringNode newnode = new StringNode(RocksdbRedis.mydata, getKey0(), value2);
+        return OK;
     }
 
-    public BulkReply hget(byte[] field1) throws RedisException {
-        HashNode newnode = new HashNode(RocksdbRedis.mydata, getKey0(), field1);
-        if (newnode == null || newnode.data()==null) {
+
+    public BulkReply get() throws RedisException {
+        StringNode newnode = new StringNode(RocksdbRedis.mydata, getKey0());
+        if (newnode == null || newnode.value()==null) {
             return NIL_REPLY;
         } else {
             return new BulkReply(newnode.getVal0());
         }
     }
 
-    public IntegerReply hdel(byte[]... field1) throws RedisException {
+    public BulkReply getrange(byte[] start1, byte[] end2) throws RedisException {
 
-        for (byte[] hkey : field1) {
-            try {
-                RocksdbRedis.mydata.delete(HashNode.genKey(getKey0(),hkey));
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-                throw new RedisException(e.getMessage());
-            }
-        }
-        return integer(field1.length);
+        BulkReply bulkReply = get();
+
+        byte[] bytes = bulkReply.data().array();
+
+        int size = bytes.length;
+        int s = RocksdbRedis.__torange(start1, size);
+        int e = RocksdbRedis.__torange(end2, size);
+        if (e < s) e = s;
+        int length = e - s + 1;
+
+        ByteBuf valueBuf = Unpooled.wrappedBuffer(bytes); //零拷贝
+        ByteBuf slice = valueBuf.slice(s, length);
+
+        return new BulkReply(slice.readBytes(slice.readableBytes()).array());
+
     }
+
+    /**
+     * 将给定 key 的值设为 value ，并返回 key 的旧值(old value)。
+     *
+     * @param key0
+     * @param value1
+     * @return
+     * @throws RedisException
+     */
+    public BulkReply getset(byte[] value1) throws RedisException {
+        BulkReply put = get();
+        set(value1);
+        if (put.data() == null || put.data().array() instanceof byte[]) {
+            return put == null ? NIL_REPLY : new BulkReply((byte[]) put.data().array());
+        } else {
+            throw invalidValue();
+        }
+    }
+
+
+
+    public MultiBulkReply mget(byte[]... keys) throws RedisException {
+
+
+        List<byte[]> listFds = new ArrayList<byte[]>();
+
+        for (byte[] k : keys
+                ) {
+            listFds.add(StringNode.genKey(k));
+        }
+
+        List<BulkReply> list = StringNode.__mget(listFds);
+
+        return new MultiBulkReply(list.toArray(new BulkReply[list.size()]));
+
+    }
+
+
+    public StatusReply mset(byte[]... field_or_value1) throws RedisException {
+        if (field_or_value1.length % 2 != 0) {
+            throw new RedisException("wrong number of arguments for HMSET");
+        }
+
+        //处理 field key
+        for (int i = 0; i < field_or_value1.length; i += 2) {
+            field_or_value1[i] = StringNode.genKey(field_or_value1[i]);
+        }
+
+        StringNode.__mput(field_or_value1);
+
+        return OK;
+    }
+
+    public IntegerReply strlen() throws RedisException {
+        BulkReply bulkReply = get();
+
+        return integer(bulkReply.data().array().length);
+    }
+
+
+    /**
+     *
+     * 命令用于所有给定 key 都不存在时，同时设置一个或多个 key-value 对
+     *
+     * @param key_or_value0
+     * @return
+     * @throws RedisException
+     */
+    public IntegerReply msetnx(byte[][] key_or_value0) throws RedisException {
+
+
+        int length = key_or_value0.length;
+        if (length % 2 != 0) {
+            throw new RedisException("wrong number of arguments for MSETNX");
+        }
+
+
+        List<byte[]> listFds = new ArrayList<byte[]>();
+        //处理 string 的主键
+        for (int i = 0; i < length; i += 2) {
+            //_put(key_or_value0[i], key_or_value0[i + 1]);
+            key_or_value0[i] = StringNode.genKey(key_or_value0[i]);
+            listFds.add(key_or_value0[i]);
+        }
+
+        //有一个不存在,返回错误
+//        List<BulkReply> bulkReplies = mget(listFds.toArray());
+        List<BulkReply> bulkReplies = StringNode.__mget(listFds);
+
+        for (BulkReply br : bulkReplies
+                ) {
+            if (br.data() == null) {
+                return integer(0);
+            }
+
+        }
+
+        StringNode.__mput(key_or_value0);
+
+        return integer(1);
+    }
+
+
+    public Reply psetex(byte[] milliseconds1, byte[] value2) throws RedisException {
+
+        setex(value2, bytesToNum(milliseconds1) + now());
+        return OK;
+    }
+
+    public IntegerReply incr(byte[] key0) throws RedisException {
+        return incrby("1".getBytes());
+    }
+
+
+    public IntegerReply incrby(byte[] increment2) throws RedisException {
+        long incr = bytesToNum(increment2);
+        BulkReply field = get();
+
+        if (field.data() == null) {
+            set(increment2);
+            return new IntegerReply(incr);
+        } else {
+            String fld = field.asAsciiString();
+            long value = Long.parseLong(fld);
+
+            value = value + incr;
+
+            set((value + "").getBytes());
+
+            return new IntegerReply(value);
+        }
+
+    }
+
+    public IntegerReply decr() throws RedisException {
+
+        return incrby("-1".getBytes());
+    }
+
+    public IntegerReply decrby(byte[] decrement1) throws RedisException {
+        return incrby(decrement1);
+    }
+
+
+    public IntegerReply append(byte[] value1) throws RedisException {
+        BulkReply src = get();
+        ByteBuf targetBuf = Unpooled.wrappedBuffer(src.data().array(), value1);
+
+        set(targetBuf.array());
+        return integer(targetBuf.array().length);
+    }
+
+//
+//    public IntegerReply del(byte[]... keys) throws RedisException {
+//
+//        for (byte[] key : keys) {
+//            try {
+//                RocksdbRedis.mydata.delete(HashNode.genKey(getKey0(),hkey));
+//            } catch (RocksDBException e) {
+//                e.printStackTrace();
+//                throw new RedisException(e.getMessage());
+//            }
+//        }
+//        return integer(field1.length);
+//    }
+
+
+    public StatusReply setex(byte[] seconds1, byte[] value2) throws RedisException {
+        long sec = bytesToNum(seconds1);
+//        set(value2);
+        StringNode newnode = new StringNode(RocksdbRedis.mydata, getKey0(), value2,seconds1);
+
+        return OK;
+    }
+
+    public IntegerReply setnx(byte[] value1) throws RedisException {
+
+        BulkReply bulkReply = get();
+
+        if(bulkReply.data()==null){
+            set(value1);
+            return integer(1);
+        }else{
+            return integer(0);
+
+        }
+
+    }
+
+    public IntegerReply setrange(byte[] offset1, byte[] value2) throws RedisException {
+        byte[] data = get().data().array();
+        ByteBuf buf = get().data();
+
+        long sec = bytesToNum(offset1);
+
+        int offset = _toposint(offset1) < data.length ? _toposint(offset1) : data.length;
+
+        buf.writeBytes(value2, offset, value2.length);
+
+        byte[] array = buf.readBytes(buf.readableBytes()).array();
+        set(array);
+
+        return integer(array.length);
+
+    }
+
+    public IntegerReply strlen(byte[] key0) throws RedisException {
+        return integer(get().data().array().length);
+    }
+
 
     public IntegerReply hlen() throws RedisException {
         List<byte[]> keys = HashNode.keys(RocksdbRedis.mydata, HashNode.genKeyPartten(getKey0()));
@@ -428,39 +639,6 @@ public class HashMeta {
 
 
 
-    public MultiBulkReply hmget(byte[]... field1) throws RedisException {
-
-
-        List<byte[]> listFds = new ArrayList<byte[]>();
-
-        for (byte[] fd : field1
-                ) {
-            listFds.add(HashNode.genKey(getKey0(), fd));
-        }
-
-        List<BulkReply> list = HashNode.__mget(listFds);
-
-        return new MultiBulkReply(list.toArray(new BulkReply[list.size()]));
-
-    }
-
-
-
-
-    public StatusReply hmset(byte[]... field_or_value1) throws RedisException {
-        if (field_or_value1.length % 2 != 0) {
-            throw new RedisException("wrong number of arguments for HMSET");
-        }
-
-        //处理 field key
-        for (int i = 0; i < field_or_value1.length; i += 2) {
-            field_or_value1[i] = HashNode.genKey(getKey0(), field_or_value1[i]);
-        }
-
-        HashNode.__mput(field_or_value1);
-
-        return OK;
-    }
 
     protected IntegerReply __hputnx(byte[] field, byte[] value) throws RedisException {
         boolean b = hget(field).data() == null ? false : true;
@@ -525,22 +703,22 @@ public class HashMeta {
      * @throws RedisException
      */
     private static void testHash() throws RedisException {
-        HashMeta meta9 = new HashMeta(RocksdbRedis.mymeta, "HashUpdate".getBytes(), true);
+        StringMeta meta9 = new StringMeta(RocksdbRedis.mymeta, "HashUpdate".getBytes(), true);
         meta9.destory();
         //测试删除
-        HashMeta meta0 = new HashMeta(RocksdbRedis.mymeta, "HashInit".getBytes(), true);
+        StringMeta meta0 = new StringMeta(RocksdbRedis.mymeta, "HashInit".getBytes(), true);
         meta0.destory();
 
         //LPUSHX 已经存在的 key
         try {
-            new HashMeta(RocksdbRedis.mymeta, "HashInit".getBytes(), false);
+            new StringMeta(RocksdbRedis.mymeta, "HashInit".getBytes(), false);
         } catch (Exception e) {
             Assert.assertTrue(e instanceof RedisException);
             Assert.assertTrue(e.getMessage().contains("没有如此的主键"));
         }
 
         //测试创建
-        HashMeta meta1 = new HashMeta(RocksdbRedis.mymeta, "HashInit".getBytes(), true);
+        StringMeta meta1 = new StringMeta(RocksdbRedis.mymeta, "HashInit".getBytes(), true);
 
         Assert.assertEquals(0, meta1.getCount());
         Assert.assertEquals(-1, meta1.getTtl());
@@ -562,7 +740,7 @@ public class HashMeta {
         meta1.flush();//持久化
 
         //引入
-        HashMeta meta2 = new HashMeta(RocksdbRedis.mymeta, "HashUpdate".getBytes(), false);
+        StringMeta meta2 = new StringMeta(RocksdbRedis.mymeta, "HashUpdate".getBytes(), false);
         meta2.info();
         Assert.assertEquals(0, meta2.getCount());
         meta2.incrCount();
