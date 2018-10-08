@@ -78,7 +78,7 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<Command> {
 //                                    System.out.println(new String((byte[]) obj));
 //                                }
 
-                                //通过反射执行回调
+                                //通过反射执行回调 最新jdk 反射接近原生方法
                                 return (Reply) methodAccess.invoke(rs, method.getName(),objects);
 
 //                                return (Reply) method.invoke(rs, objects);

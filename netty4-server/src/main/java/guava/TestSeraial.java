@@ -1,4 +1,4 @@
-package redis.server.netty;
+package guava;
 
 /**
  * Created by moyong on 2017/10/31.
@@ -14,6 +14,13 @@ public class TestSeraial {
         ByteBuf buffer = Unpooled.buffer(8);
         buffer.writeInt(8);
         buffer.writeInt(20);
+        System.out.println("长度："+buffer.array().length);
+
+        buffer.writeChar('|');
+        buffer.writeBytes("|".getBytes());
+
+        System.out.println("长度："+buffer.array().length);
+
 
         // 序列化
         byte[] bytes = new byte[buffer.writerIndex()];
@@ -25,6 +32,8 @@ public class TestSeraial {
         ByteBuf wrappedBuffer = Unpooled.wrappedBuffer(bytes);
         System.out.println(wrappedBuffer.readInt());
         System.out.println(wrappedBuffer.readInt());
+        System.out.println(wrappedBuffer.readChar());
+        System.out.println(new String(wrappedBuffer.readBytes(1).array()));
 
     }
 }

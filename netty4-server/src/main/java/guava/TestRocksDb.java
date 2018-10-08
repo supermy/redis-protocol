@@ -1,4 +1,4 @@
-package redis.server.netty;
+package guava;
 
 import org.rocksdb.*;
 import org.rocksdb.util.SizeUnit;
@@ -67,8 +67,8 @@ public class TestRocksDb {
 
 
 
-        System.out.println( new String(db.get("0x1".getBytes())));
-        System.out.println( new String(db.get("5x1".getBytes())));
+//        System.out.println( new String(db.get("0x1".getBytes())));
+//        System.out.println( new String(db.get("5x1".getBytes())));
 
 
 

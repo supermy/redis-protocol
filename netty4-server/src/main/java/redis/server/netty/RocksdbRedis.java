@@ -9,6 +9,7 @@ import org.rocksdb.*;
 import org.rocksdb.util.SizeUnit;
 import redis.netty4.*;
 import redis.util.*;
+import sun.awt.DesktopBrowse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -304,7 +305,13 @@ public class RocksdbRedis extends RedisBase {
                 ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf, keySulBuf);
                 byte[] newKey = keyBuf.readBytes(keyBuf.readableBytes()).array();
 
-                batch.put(newKey, curVal);
+
+                try {
+                    batch.put(newKey, curVal);
+                }catch (RocksDBException e){
+                    e.printStackTrace();
+                }
+
 
             } else {
                 // 取出当前的数据 lpush list 开始的第一个元素
@@ -321,8 +328,12 @@ public class RocksdbRedis extends RedisBase {
 
                 //更新当前元素指针
                 byte[] pvalue = __genValList(pval, -1, jo.get("pseq").getAsLong(), eseq); //当前数据，有效期，上一个元素，下一个元素
-                batch.put(firstkey, pvalue); //第一个数据
 
+                try {
+                    batch.put(firstkey, pvalue); //第一个数据
+                }catch (RocksDBException e){
+                    e.printStackTrace();
+                }
 
                 //设置新增数据及其指针
                 curVal = __genValList(bt, -1, Math.decrementExact(cseq), -1);
@@ -331,7 +342,12 @@ public class RocksdbRedis extends RedisBase {
                 keySulBuf.writeLong(eseq);
                 ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf, keySulBuf);
                 byte[] newKey = keyBuf.readBytes(keyBuf.readableBytes()).array();
-                batch.put(newKey, curVal); //新增数据
+
+                try {
+                    batch.put(newKey, curVal); //新增数据
+                }catch (RocksDBException e){
+                    e.printStackTrace();
+                }
 
             }
             //元素计数+1
@@ -1586,7 +1602,12 @@ public class RocksdbRedis extends RedisBase {
                 ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf, keySulBuf);
                 byte[] newKey = keyBuf.readBytes(keyBuf.readableBytes()).array();
 
-                batch.put(newKey, curVal);
+
+                try {
+                    batch.put(newKey, curVal);
+                }catch (RocksDBException e){
+                    e.printStackTrace();
+                }
 
             } else {
                 // 取出当前的数据 lpush list 开始的第一个元素
@@ -1606,8 +1627,12 @@ public class RocksdbRedis extends RedisBase {
 
                 //更新当前元素指针
                 byte[] pvalue = __genValList(pval, -1, sseq, jo.get("nseq").getAsLong()); //当前数据，有效期，上一个元素，下一个元素
-                batch.put(firstkey, pvalue); //第一个数据
 
+                try {
+                    batch.put(firstkey, pvalue); //第一个数据
+                }catch (RocksDBException e){
+                    e.printStackTrace();
+                }
 
                 //设置新增数据及其指针
                 curVal = __genValList(bt, -1, -1, Math.decrementExact(sseq));
@@ -1616,7 +1641,12 @@ public class RocksdbRedis extends RedisBase {
                 keySulBuf.writeLong(sseq);
                 ByteBuf keyBuf = Unpooled.wrappedBuffer(keyPreBuf, keySulBuf);
                 byte[] newKey = keyBuf.readBytes(keyBuf.readableBytes()).array();
-                batch.put(newKey, curVal); //新增数据
+
+                try {
+                    batch.put(newKey, curVal); //新增数据
+                }catch (RocksDBException e){
+                    e.printStackTrace();
+                }
 
             }
             //元素计数+1
@@ -1749,7 +1779,12 @@ public class RocksdbRedis extends RedisBase {
             byte[] val = __genVal(field_or_value1[i + 1], -1);
 
 //            batch.put(keys[1],val);
-            batch.put(field_or_value1[i], val);
+            try {
+                batch.put(field_or_value1[i], val);
+            }
+            catch (RocksDBException e){
+                e.printStackTrace();
+            }
 
             //fixme  通过 keys 获取数量
 //            executorService.execute(new Runnable() {
@@ -2286,6 +2321,9 @@ public class RocksdbRedis extends RedisBase {
      * @return
      */
     protected byte[] __get(byte[] key0) throws RedisException {
+
+//        return  stringMeta.get(key0);
+
         return __get(mydata, key0);
     }
 
@@ -2423,9 +2461,11 @@ public class RocksdbRedis extends RedisBase {
      * @param value
      * @return
      */
-    protected byte[] __put(byte[] key, byte[] value) {
+    protected byte[] __put(byte[] key0, byte[] value1) throws RedisException {
 
-        return __put(mydata, key, value, -1);
+//        return  stringMeta.set(key0, value1);
+        //初始化StringMeta 对象，参数mydata 参数
+                return __put(mydata, key0, value1, -1);
     }
 
     /**
@@ -2581,10 +2621,10 @@ public class RocksdbRedis extends RedisBase {
      * @return
      */
     protected static byte[]  __genkey(byte[]... keys) {
-        ByteBuf buf3 = Unpooled.wrappedBuffer(keys);
-        byte[] array = buf3.readBytes(buf3.readableBytes()).array();
-        System.out.println(String.format("buf3组合键为 %s", new String(array)));
-        return array;
+        ByteBuf buf = Unpooled.wrappedBuffer(keys);
+        byte[] arraykey = buf.readBytes(buf.readableBytes()).array();
+        System.out.println(String.format("buf3组合键为 %s", new String(arraykey)));
+        return arraykey;
     }
 
     ///////////////////////////
@@ -2802,9 +2842,14 @@ public class RocksdbRedis extends RedisBase {
     }
 
 
+
     protected static RocksDB mydata = getDb("netty4-server/db/data");
     protected static RocksDB mymeta = getDb("netty4-server/db/meta");
     protected static RocksDB myexpires = getDb("netty4-server/db/expires");
+
+    //Redis String 类型；
+    //protected static StringMeta stringMeta = StringMeta.getInstance(mydata,"redis".getBytes());
+
 
     protected static RocksDB getDb(String filename) {
 //    String filename = env.getRequiredProperty(filename);

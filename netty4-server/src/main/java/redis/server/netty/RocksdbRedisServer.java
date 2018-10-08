@@ -2,8 +2,10 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import org.rocksdb.RocksDBException;
+import org.rocksdb.*;
+import org.rocksdb.util.SizeUnit;
 import redis.netty4.*;
+import redis.server.netty.utis.DataType;
 import redis.util.*;
 
 import java.lang.reflect.Field;
@@ -23,7 +25,7 @@ import static redis.util.Encoding.numToBytes;
  * <p>
  * 指令优化：
  * set   mset    setex   setnx   setrange msetnx psetex hsetnx
- * get   mget    getset  getrange   hvals
+ * get   mget    getset  getRange   hvals
  * del
  * incr  incrby  incrbyfloat
  * decr  decrby
@@ -34,6 +36,64 @@ import static redis.util.Encoding.numToBytes;
  * 不支持 dump
  */
 public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
+
+    protected static RocksDB mydata = getDb("netty4-server/db/data");
+    //Redis String 类型；
+    protected static StringMeta stringMeta = StringMeta.getInstance(mydata,"redis".getBytes());
+    protected static HashMeta hashMeta = HashMeta.getInstance(mydata,"redis".getBytes());
+
+
+    protected static RocksDB getDb(String filename) {
+//    String filename = env.getRequiredProperty(filename);
+
+        System.out.println("rocks db path:" + filename);
+
+        RocksDB.loadLibrary();
+        // the Options class contains a set of configurable DB options
+        // that determines the behavior of a database.
+        //默认设置性能最好
+        //get ops 46202.18 requests per second
+        //set ops 25489.40 requests per second
+
+//        try {
+//            return RocksDB.open(filename);
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//        }
+//        return null;
+
+
+        final Options options = new Options();
+
+//        final Statistics stats = new Statistics();
+
+        try {
+            options.setCreateIfMissing(true)
+                    .setWriteBufferSize(8 * SizeUnit.KB)
+                    .setMaxWriteBufferNumber(3)
+                    .setMaxBackgroundCompactions(2)
+                    .setCompressionType(CompressionType.SNAPPY_COMPRESSION)
+                    .setCompactionStyle(CompactionStyle.UNIVERSAL);
+        } catch (final IllegalArgumentException e) {
+            assert (false);
+        }
+
+        options.setMemTableConfig(new SkipListMemTableConfig());
+
+        final StringAppendOperator stringAppendOperator = new StringAppendOperator();
+        options.setMergeOperator(stringAppendOperator);
+
+
+        RocksDB db = null;
+        try {
+            // a factory method that returns a RocksDB instance
+            db = RocksDB.open(options, filename);
+        } catch (RocksDBException e) {
+            e.printStackTrace();
+        }
+        return db;
+    }
+
 
     private static final StatusReply PONG = new StatusReply("PONG");
     private long started = now();
@@ -98,6 +158,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
             nextField = null;
         }
     }
+
 
 
 
@@ -276,26 +337,29 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public BulkReply get(byte[] key0) throws RedisException {
-
-        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
-
-        byte[] o = __get(key);
-
-//        if (o instanceof byte[]) {
-//            return new BulkReply(o);
-//        }
+//
+//        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+//
+//        byte[] o = __get(key);
+//
+////        if (o instanceof byte[]) {
+////            return new BulkReply(o);
+////        }
+////        if (o == null) {
+////            return NIL_REPLY;
+////        } else {
+////            throw invalidValue();
+////        }
+//
+//
 //        if (o == null) {
 //            return NIL_REPLY;
 //        } else {
-//            throw invalidValue();
+//            return new BulkReply(o);
 //        }
 
+        return  stringMeta.get(key0);
 
-        if (o == null) {
-            return NIL_REPLY;
-        } else {
-            return new BulkReply(o);
-        }
     }
 
     /**
@@ -334,24 +398,26 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public BulkReply getrange(byte[] key0, byte[] start1, byte[] end2) throws RedisException {
-        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
 
-        byte[] bytes = __get(key);
+        return  stringMeta.getRange(key0,start1,end2);
 
-        int size = bytes.length;
-        int s = _torange(start1, size);
-        int e = _torange(end2, size);
-        if (e < s) e = s;
-        int length = e - s + 1;
 
-        ByteBuf valueBuf = Unpooled.wrappedBuffer(bytes); //零拷贝
-        ByteBuf slice = valueBuf.slice(s, length);
+//        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+//
+//        byte[] bytes = __get(key);
+//
+//        int size = bytes.length;
+//        int s = _torange(start1, size);
+//        int e = _torange(end2, size);
+//        if (e < s) e = s;
+//        int length = e - s + 1;
+//
+//        ByteBuf valueBuf = Unpooled.wrappedBuffer(bytes); //零拷贝
+//        ByteBuf slice = valueBuf.slice(s, length);
+//
+//        return new BulkReply(slice.readBytes(slice.readableBytes()).array());
 
-        return new BulkReply(slice.readBytes(slice.readableBytes()).array());
 
-//        byte[] out = new byte[length];
-//        System.arraycopy(bytes, s, out, 0, length);
-//        return new BulkReply(out);
     }
 
     /**
@@ -570,9 +636,12 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public StatusReply set(byte[] key0, byte[] value1) throws RedisException {
-        byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
-        __put(key, value1);
-        return OK;
+       // byte[] key = __genkey(key0, "|".getBytes(), "string".getBytes());
+//        __put(key0, value1);
+//        return OK;
+
+        return  stringMeta.set(key0, value1,null);//
+
     }
 
     /**
@@ -756,7 +825,19 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
         return QUIT;
     }
 
+
+    public byte[] getTable() {
+        return table;
+    }
+
+    public void setTable(byte[] table) {
+        this.table = table;
+    }
+
+    private byte[] table;//ns
+
     /**
+     * 可以更改NS
      * Change the selected database for the current connection
      * Connection
      *
@@ -765,6 +846,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public StatusReply select(byte[] index0) throws RedisException {
+        table = index0;
         throw new RedisException("Not supported");
     }
 
@@ -2461,6 +2543,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
      */
     @Override
     public IntegerReply hset(byte[] key0, byte[] field1, byte[] value2) throws RedisException {
+
         byte[] put = __hput(key0, field1, value2);
         return put == null ? integer(0) : integer(1);
     }

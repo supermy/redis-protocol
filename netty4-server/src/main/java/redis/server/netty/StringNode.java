@@ -8,6 +8,7 @@ import redis.netty4.BulkReply;
 import redis.netty4.IntegerReply;
 import redis.netty4.MultiBulkReply;
 import redis.netty4.Reply;
+import redis.server.netty.utis.DataType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,14 +24,26 @@ import static redis.netty4.IntegerReply.integer;
  * <p>
  * Created by moyong on 2017/11/29.
  */
+@Deprecated
 public class StringNode {
-    public static final StringNode NIL_HashNode = new StringNode(RocksdbRedis.mydata);
 
     private static final byte[] PRE = "_k".getBytes();
     private static final byte[] SPLIT = "#".getBytes();
 
 
     private RocksDB db;
+
+
+    public byte[] getTable() {
+        return table;
+    }
+
+    public void setTable(byte[] table) {
+        this.table = table;
+    }
+
+    // namespace  默认是表0 ,方便组合 byte[]类型
+    private byte[] table="0".getBytes();
 
 
     private ByteBuf keyBuf;
@@ -54,9 +67,9 @@ public class StringNode {
     /**
      * 创建元素
      *
+     *
      * @param db0
      * @param key0
-     * @param field0
      * @param val0
      * @throws RedisException
      */
@@ -72,11 +85,11 @@ public class StringNode {
 
 
     protected void create(byte[] key0, byte[] val0) throws RedisException {
-        keyBuf = Unpooled.wrappedBuffer(PRE, key0);
+        keyBuf = Unpooled.wrappedBuffer(table,key0,DataType.KEY_META);
 
         ByteBuf ttlBuf = Unpooled.buffer(12);
         ttlBuf.writeLong(-1); //ttl 无限期 -1
-        ttlBuf.writeInt(val0.length); //value size
+        ttlBuf.writeInt(DataType.VAL_STRING); //value type
 
         ByteBuf val0Buf = Unpooled.wrappedBuffer(val0);
 
@@ -95,13 +108,13 @@ public class StringNode {
         keyBuf = Unpooled.wrappedBuffer(PRE, key0);
 
 
-        ByteBuf ttlBuf = Unpooled.buffer(12);
-        ttlBuf.writeLong(RocksdbRedis.bytesToLong(ttl)); //ttl 无限期 -1
-        ttlBuf.writeInt(val0.length); //value size
+        ByteBuf metaBuf = Unpooled.buffer(12);
+        metaBuf.writeLong(RocksdbRedis.bytesToLong(ttl)); //ttl 无限期 -1
+        metaBuf.writeInt(DataType.VAL_STRING); //value type
 
         ByteBuf val0Buf = Unpooled.wrappedBuffer(val0);
 
-        valBuf = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
+        valBuf = Unpooled.wrappedBuffer(metaBuf, val0Buf);//零拷贝
 
         try {
             db.put(getKey(), getVal());
@@ -117,9 +130,9 @@ public class StringNode {
     /**
      * 数据初始化
      *
+     *
      * @param db0
      * @param key0
-     * @param field0
      * @throws RedisException
      */
     public StringNode(RocksDB db0, byte[] key0) throws RedisException {
@@ -219,12 +232,12 @@ public class StringNode {
     /**
      * 构造字段 Key,用来获取字段数据
      *
-     * @param metakey0
-     * @param field0
+     *
+     * @param key0
      * @return
      */
-    public static byte[] genKey(byte[] metakey0) {
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(PRE, metakey0);
+    public static byte[] genKey(byte[] key0) {
+        ByteBuf byteBuf = Unpooled.wrappedBuffer(PRE, key0);
         return byteBuf.readBytes(byteBuf.readableBytes()).array();
     }
 
@@ -413,8 +426,18 @@ public class StringNode {
 
             byte[] val = StringNode.genVal(field_or_value1[i + 1], -1);
 
-            batch.put(field_or_value1[i], val);
-            //fixme  通过 keys 获取数量
+            System.out.println(new String(field_or_value1[i]));
+            System.out.println(new String(val));
+
+
+            try {
+
+                batch.put(field_or_value1[i], val);
+                //fixme  通过 keys 获取数量
+                           }catch (RocksDBException e){
+                e.printStackTrace();
+            }
+
 
         }
         try {
@@ -440,7 +463,11 @@ public class StringNode {
             return null;
         } else {
             keyBuf.resetReaderIndex();
-            return keyBuf.readBytes(keyBuf.readableBytes()).array();
+            byte[] key = keyBuf.readBytes(keyBuf.readableBytes()).array();
+
+            System.out.println(new String(key));
+
+            return key;
         }
     }
 

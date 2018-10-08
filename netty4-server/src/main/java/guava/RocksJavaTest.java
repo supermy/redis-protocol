@@ -286,6 +286,10 @@ public class RocksJavaTest {
 //            rocksDB.delete(iter3.key());
 
         }
+//        ReadOptions ro = new ReadOptions();
+//        ro.set
+//        rocksDB.multiGet();
+//        rocksDB.write();
 
         System.out.println("=================3");
 
@@ -315,6 +319,8 @@ public class RocksJavaTest {
 
         System.out.println("....cfhs:"+cfhs.size());
 
+
+
         //批量写
         //批量读
         Map<Object, ColumnFamilyHandle> columnFamilies = test.columnFamilies;
@@ -339,7 +345,37 @@ public class RocksJavaTest {
 //        System.out.println(db.get(columnFamilies.get("nseq"),"1".getBytes()));
 //        System.out.println(db.get(columnFamilies.get("cseq"),"1".getBytes()));
 
-        System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        System.out.println("<<<deleteRange<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+
+        //批量删除
+        db.put("abc#1".getBytes(),"value".getBytes());
+        db.put("abc#2".getBytes(),"value".getBytes());
+        db.put("abc#3".getBytes(),"value".getBytes());
+        db.put("abc#4".getBytes(),"value".getBytes());
+        db.put("abc#5".getBytes(),"value".getBytes());
+        db.put("abc#6".getBytes(),"value".getBytes());
+        db.put("abd#1".getBytes(),"value".getBytes());
+        db.put("abd#2".getBytes(),"value".getBytes());
+        db.put("abe#3".getBytes(),"value".getBytes());
+        db.put("abf#4".getBytes(),"value".getBytes());
+        db.put("abg#5".getBytes(),"value".getBytes());
+        db.put("abh#6".getBytes(),"value".getBytes());
+        db.put("ach#6".getBytes(),"value".getBytes());
+
+        //清除某个类型的数据
+//        db.deleteRange("abc#".getBytes(),"abc#z".getBytes());
+        db.deleteRange("abd#".getBytes(),"abd#".getBytes());
+
+        RocksIterator iter = db.newIterator();
+        for (iter.seek("ab".getBytes()); iter.isValid(); iter.next()) {
+//            iter.status();
+            System.out.println(new String(iter.key()) + ":" + new String(iter.value()));
+        }
+
+//        db.deleteRange("abc3".getBytes(),"abf4".getBytes());
+
+
+        db.compactRange();
 
 
 
