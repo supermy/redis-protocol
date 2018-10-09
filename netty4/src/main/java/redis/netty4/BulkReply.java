@@ -40,6 +40,7 @@ public class BulkReply implements Reply<ByteBuf> {
 
   @Override
   public ByteBuf data() {
+//    bytes.resetReaderIndex();
     return bytes;
   }
 

@@ -5,9 +5,6 @@ import io.netty.buffer.Unpooled;
 import org.junit.Assert;
 import org.rocksdb.*;
 import redis.netty4.BulkReply;
-import redis.netty4.IntegerReply;
-import redis.netty4.MultiBulkReply;
-import redis.netty4.Reply;
 import redis.server.netty.utis.DataType;
 
 import java.util.ArrayList;
@@ -16,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 
 import static redis.netty4.BulkReply.NIL_REPLY;
-import static redis.netty4.IntegerReply.integer;
 
 
 /**
@@ -89,7 +85,7 @@ public class StringNode {
 
         ByteBuf ttlBuf = Unpooled.buffer(12);
         ttlBuf.writeLong(-1); //ttl 无限期 -1
-        ttlBuf.writeInt(DataType.VAL_STRING); //value type
+        ttlBuf.writeInt(DataType.KEY_STRING); //value type
 
         ByteBuf val0Buf = Unpooled.wrappedBuffer(val0);
 
@@ -110,7 +106,7 @@ public class StringNode {
 
         ByteBuf metaBuf = Unpooled.buffer(12);
         metaBuf.writeLong(RocksdbRedis.bytesToLong(ttl)); //ttl 无限期 -1
-        metaBuf.writeInt(DataType.VAL_STRING); //value type
+        metaBuf.writeInt(DataType.KEY_STRING); //value type
 
         ByteBuf val0Buf = Unpooled.wrappedBuffer(val0);
 

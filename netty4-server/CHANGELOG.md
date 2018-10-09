@@ -1,3 +1,7 @@
+### 2018-10-09 
+    val编码 = ttl|type|size|value
+    meta 与 element value 都采用上述规则 
+
 ### 2018-09-24
     StringMeta 重构完成，除setbit & getbit 都已经完成；计划SortSet 的机制完成。
     HashMeta 开始重构；
@@ -32,7 +36,7 @@
     代码进行二次重构
     
     Meta and Data 使用一个 DB;
-    MetaObject TTL+Value
+    MetaObject TTL+TYPE+Value-size+Value
     
     数据类型        Key                                 Value
     String      [<ns>] <key> KEY_META                 KEY_STRING <MetaObject>

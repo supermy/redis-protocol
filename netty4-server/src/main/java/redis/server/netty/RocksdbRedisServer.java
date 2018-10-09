@@ -524,7 +524,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 //            }
         }
 
-//        new BulkReply((__mget(listFds).to]);
+//        new BulkReply((hmget(listFds).to]);
         List<BulkReply> bulkReplies = __mget(listFds);
         return new MultiBulkReply(bulkReplies.toArray(new Reply[bulkReplies.size()]));
 //        return new MultiBulkReply(replies);

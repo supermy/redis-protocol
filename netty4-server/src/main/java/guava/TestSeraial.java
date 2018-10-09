@@ -35,5 +35,12 @@ public class TestSeraial {
         System.out.println(wrappedBuffer.readChar());
         System.out.println(new String(wrappedBuffer.readBytes(1).array()));
 
+
+
+        StringBuilder metaV = new StringBuilder("ttl|type|size");
+        String substring = metaV.substring(metaV.indexOf("|")+1).substring(0, metaV.indexOf("|")+1);
+        System.out.println(substring);
+
+
     }
 }

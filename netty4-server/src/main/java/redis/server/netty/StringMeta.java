@@ -30,9 +30,18 @@ import static redis.util.Encoding.numToBytes;
 /**
  * String Meta 元素方便促常用操作
  * 链式使用bean
+ *
+ * String set/del 可以覆盖其他类型，Hash/Set/List/ZSet类型不可以转换覆盖
  * <p>
  * String      [<ns>] <key> KEY_META                 KEY_STRING <MetaObject>
  * <p>
+ *
+ *      key and value 都采用 | 分隔符号
+ *      * getKey 一般是包含组合键；
+ *      * getkey0 是纯粹的业务主键；
+ *      * 参见setVal0 long+int+int ttl,数据类型,数据长度；
+ *      * val 一般是包含ttl 的数据；val0是实际的业务数据
+ *
  * Created by moyong on 2017/11/29.
  * Update by moyong 2018/09/18.
  * method: set get getrange getset mget setex setnx setrange strlen mset msetnx  psetex  incr incrby incrbyfloat decr decrby append
@@ -126,7 +135,7 @@ public class StringMeta {
     private byte[] getVal0() throws RedisException {
         //test fixme
         metaVal.resetReaderIndex();
-        ByteBuf valueBuf = metaVal.slice(8 + 4, metaVal.readableBytes() - 8 - 4);
+        ByteBuf valueBuf = metaVal.slice(8 + 4+ 4 +3, metaVal.readableBytes() - 8 -4 - 4-3);
         //数据过期处理
         if (getTtl() < now() && getTtl() != -1) {
             try {
@@ -195,23 +204,81 @@ public class StringMeta {
      */
     public StatusReply set(byte[] key0, byte[] val1, byte[] seconds2) throws RedisException {
 
+        //todo 增加一个异步计数队列 增加一个删除其它类型的异步数据清理；先使用异步线程，后续使用异步队列替换；
+        //判断类型，非hash 类型返回异常信息；
+//        int v = hashNode.typeBy(db, getKey());
+//        if(v!=DataType.KEY_HASH){
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
+//        //若有，算出原有的metakey，删除原有的elementKey 子元素；
+//        if(v==-1){
+//            //主键不存在
+//        }
+//
+
+//
+//        switch(vType){
+//
+//            case DataType.KEY_STRING:
+//
+//                System.out.println(DataType.KEY_STRING);break;
+//
+//            case DataType.KEY_HASH:
+//
+//                System.out.println(DataType.KEY_HASH);break;
+//
+//            case DataType.KEY_SET:
+//
+//                System.out.println(DataType.KEY_SET);break;
+//
+//            case DataType.KEY_LIST:
+//
+//                System.out.println(DataType.KEY_LIST);break;
+//
+//            case DataType.KEY_ZSET:
+//
+//                System.out.println(DataType.KEY_ZSET);break;
+//
+//
+//            default:
+//                System.out.println("default");break;
+//        }
+
+
+        //维护metakey；计数；清理其他类型的key；
+        //singleThreadExecutor
+        ///////////
 
         genMetaKey(key0);
 
-        ByteBuf ttlBuf = Unpooled.buffer(12);
 
+        long ttl =0;
         if (seconds2 == null) {
-            ttlBuf.writeLong(-1); //ttl 无限期 -1
+            ttl = -1; //ttl 无限期 -1
 
         } else {
-            ttlBuf.writeLong(RocksdbRedis.bytesToLong(seconds2));
+            ttl = RocksdbRedis.bytesToLong(seconds2);
         }
 
-        ttlBuf.writeInt(DataType.VAL_STRING); //value type
 
-        ByteBuf val0Buf = Unpooled.wrappedBuffer(val1);
+        genVal(val1,ttl);
 
-        this.metaVal = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
+//        ByteBuf ttlBuf = Unpooled.buffer(12);
+//        ttlBuf.writeLong(ttl); //ttl
+//        ttlBuf.writeBytes(DataType.SPLIT);
+//
+//        ttlBuf.writeInt(DataType.KEY_STRING); //value type
+//        ttlBuf.writeBytes(DataType.SPLIT);
+//
+//        ttlBuf.writeInt(val1.length);  //val size
+//        ttlBuf.writeBytes(DataType.SPLIT);
+//
+//
+//        ByteBuf val0Buf = Unpooled.wrappedBuffer(val1);
+//        this.metaVal = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
+
+
 
         //todo 异步队列删除 Hash Set SortSet List 的 meta数据与element 数据
 
@@ -366,9 +433,12 @@ public class StringMeta {
             ByteBuf vvBuf = Unpooled.wrappedBuffer(values);
 
             vvBuf.resetReaderIndex();
+
             ByteBuf ttlBuf = vvBuf.readSlice(8);
-            ByteBuf sizeBuf = vvBuf.readSlice(4);
-            ByteBuf valueBuf = vvBuf.slice(8 + 4, values.length - 8 - 4);
+            ByteBuf typeBuf = vvBuf.slice(8+1,4);
+            ByteBuf sizeBuf = vvBuf.slice(8+1+4+1,4);
+
+            ByteBuf valueBuf = vvBuf.slice(8 + 4 + 4 + 3, values.length - 8 -4 - 4 - 3);
 
             long ttl = ttlBuf.readLong();//ttl
             long size = sizeBuf.readInt();//长度数据
@@ -411,10 +481,7 @@ public class StringMeta {
         final WriteBatch batch = new WriteBatch();
         for (int i = 0; i < field_or_value1.length; i += 2) {
 
-            byte[] val = genVal(field_or_value1[i + 1], -1);
-
-            //System.out.println(new String(field_or_value1[i]));
-            //System.out.println(new String(val));
+            byte[] val = genVal(field_or_value1[i + 1], -1).getVal();
 
             try {
 
@@ -434,15 +501,26 @@ public class StringMeta {
         }
     }
 
-    protected byte[] genVal(byte[] value, long expiration) {
+    protected StringMeta genVal(byte[] value, long expiration) {
+
         ByteBuf ttlBuf = Unpooled.buffer(12);
         ttlBuf.writeLong(expiration); //ttl 无限期 -1
+        ttlBuf.writeBytes(DataType.SPLIT);
+
+        ttlBuf.writeInt(DataType.KEY_STRING); //value type
+        ttlBuf.writeBytes(DataType.SPLIT);
+
         ttlBuf.writeInt(value.length); //value size
+        ttlBuf.writeBytes(DataType.SPLIT);
+
 
         ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //零拷贝
-        ByteBuf valbuf = Unpooled.wrappedBuffer(ttlBuf, valueBuf);//零拷贝
+        metaVal = Unpooled.wrappedBuffer(ttlBuf, valueBuf);//零拷贝
 
-        return valbuf.readBytes(valbuf.readableBytes()).array();
+//      return valbuf.readBytes(valbuf.readableBytes()).array();
+
+//        return getVal();
+        return this;
     }
 
     public IntegerReply strlen(byte[] key0) throws RedisException {
@@ -450,6 +528,8 @@ public class StringMeta {
 
         return integer(bulkReply.data().array().length);
     }
+
+//5.67/3.5
 
 
     /**
@@ -667,7 +747,9 @@ public class StringMeta {
         Assert.assertArrayEquals("lu".getBytes(), metaString.getRange("key".getBytes(), "2".getBytes(), "3".getBytes()).data().array());
         Assert.assertArrayEquals("value".getBytes(), metaString.getset("key".getBytes(), "val".getBytes()).data().array());
 
-//        metaString.info();
+//      metaString.info();
+
+        //metaString.destory("k7".getBytes()).destory("k8".getBytes()).destory("k9".getBytes());
 
         metaString.mset("k1".getBytes(), "v1".getBytes(), "k2".getBytes(), "v2".getBytes(), "k3".getBytes(), "v3".getBytes());
         metaString.msetnx("k1".getBytes(), "va".getBytes(), "k4".getBytes(), "v4".getBytes(), "k5".getBytes(), "v5".getBytes());

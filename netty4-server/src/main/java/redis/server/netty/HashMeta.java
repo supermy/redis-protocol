@@ -20,6 +20,7 @@ import static java.lang.Double.valueOf;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
+import static redis.server.netty.RedisBase.invalidValue;
 import static redis.util.Encoding.bytesToNum;
 
 
@@ -29,10 +30,18 @@ import static redis.util.Encoding.bytesToNum;
  * Hash    [<ns>] <key> KEY_META                 KEY_HASH <MetaObject>
  *         [<ns>] <key> KEY_HASH_FIELD <field>   KEY_HASH_FIELD <field-value>
  * </p>
+ *
+ *      key and value 都采用 | 分隔符号
+ *      * getKey 一般是包含组合键；
+ *      * getkey0 是纯粹的业务主键；
+ *      * 参见setVal0 long+int+int ttl,数据类型,数据长度；
+ *      * val 一般是包含ttl 的数据；val0是实际的业务数据
  * <p>
  * Created by moyong on 2017/11/9.
  * Update by moyong on 2018/09/24
  * </p>
+ *
+ * todo 重构&测试 单个element 的操作方法在node;多个element 操作方法在meta,meta 的操作方法；
  */
 public class HashMeta {
 
@@ -117,9 +126,15 @@ public class HashMeta {
     protected HashMeta setMeta(long count) throws RedisException {
 
         this.metaVal = Unpooled.buffer(8);
+
         this.metaVal.writeLong(-1); //ttl 无限期 -1
+        metaVal.writeBytes(DataType.SPLIT);
+
         this.metaVal.writeInt(DataType.KEY_HASH); //long 8 bit
+        metaVal.writeBytes(DataType.SPLIT);
+
         this.metaVal.writeLong(count);  //数量
+        metaVal.writeBytes(DataType.SPLIT);
 
         System.out.println(String.format("count:%d   主键：%s   value:%s", count, getKey0Str(), getVal0()));
 
@@ -228,11 +243,11 @@ public class HashMeta {
     }
 
     public long getVal0() throws RedisException {
-        return metaVal.getLong(12);
+        return metaVal.getLong(8+4+4+3);
     }
 
     public void setVal0(long val0) throws RedisException {
-        this.metaVal.setLong(12, val0);  //数量
+        this.metaVal.setLong(8+4+4+3, val0);  //数量
     }
 
     public byte[] getVal() throws RedisException {
@@ -368,27 +383,30 @@ public class HashMeta {
      */
     public IntegerReply hset(byte[] field1, byte[] value2) throws RedisException {
 
+        //判断类型，非hash 类型返回异常信息；
+        if(hashNode.typeBy(db, getKey()) !=DataType.KEY_HASH){
+            //抛出异常 类型不匹配
+            throw invalidValue();
+        }
+
+        //数据持久化
         hashNode.genKey1(getKey0(), field1).hset(value2);
-        //todo 增加一个异步计数队列 增加一个删除其它类型的异步数据清理；先使用异步线程，后续使用异步队列替换；
-        setMeta(hlen().data());
 
-        //若有，算出原有的metakey，删除原有的elementKey 子元素；
-        StringBuilder metaV = hashNode.existsBy(db, getKey());
+        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
+        singleThreadExecutor.execute(() -> {
+            try {
+                setMeta(hlen().data());
+            } catch (RedisException e) {
+                e.printStackTrace();
+            }
+        });
 
-        //维护metakey；计数；清理其他类型的key；
-        //singleThreadExecutor
-
-        //return put == null ? integer(0) : integer(1);
         return integer(1);
     }
 
 
-
-
     public BulkReply hget(byte[] field1) throws RedisException {
         HashNode node = hashNode.genKey1(getKey0(), field1).hget();
-
-//        HashNode newnode = new HashNode(RocksdbRedis.mydata, getKey0(), field1);
 
         if (node == null || node.data() == null) {
             return NIL_REPLY;
@@ -400,54 +418,50 @@ public class HashMeta {
     public IntegerReply hdel(byte[]... field1) throws RedisException {
 
         for (byte[] hkey : field1) {
-            try {
-                RocksdbRedis.mydata.delete(HashNode.genKey(getKey0(), hkey));
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-                throw new RedisException(e.getMessage());
-            }
+//            try {
+
+                hashNode.genKey1(getKey0(), hkey).hdel();
+
+//            } catch (RocksDBException e) {
+//                e.printStackTrace();
+//                throw new RedisException(e.getMessage());
+//            }
         }
+
+        //todo 重新计数
+        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
+        singleThreadExecutor.execute(() -> {
+            try {
+                setMeta(hlen().data());
+            } catch (RedisException e) {
+                e.printStackTrace();
+            }
+        });
+
+
         return integer(field1.length);
     }
 
     public IntegerReply hlen() throws RedisException {
-        Long cnt = HashNode.countBy(db, hashNode.genKeyPartten());
+        Long cnt = hashNode.countBy(db, hashNode.genKeyPartten());
         return integer(cnt);
     }
 
-    /**
-     * hash meta keys
-     *
-     * @param key
-     * @return
-     * @throws RedisException
-     */
-    protected List<byte[]> __hkeys() throws RedisException {
 
-        List<byte[]> results = new ArrayList<>();
+    public MultiBulkReply hkeys() throws RedisException {
+
+        List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
+
 
         List<byte[]> keys = HashNode.keys(db, hashNode.genKeyPartten());
 
         for (byte[] k : keys
         ) {
 
-            byte[] f = HashNode.parseHField(getKey0(), k);
+            byte[] f = hashNode.parseHField(getKey0(), k);
 
-            results.add(f);
-        }
-        return results;
+            replies.add(new BulkReply(f));
 
-    }
-
-
-    public MultiBulkReply hkeys() throws RedisException {
-
-        List<byte[]> bytes = __hkeys();
-
-        List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
-        for (byte[] bt : bytes
-        ) {
-            replies.add(new BulkReply(bt));
         }
 
         return new MultiBulkReply(replies.toArray(new Reply[replies.size()]));
@@ -456,7 +470,9 @@ public class HashMeta {
 
     public IntegerReply hexists(byte[] field1) throws RedisException {
 
-        return hget(field1).data() == null ? integer(0) : integer(1);
+        boolean exists = hashNode.genKey1(getKey0(), field1).exists();
+
+        return exists ? integer(1) : integer(0);
     }
 
 
@@ -464,7 +480,7 @@ public class HashMeta {
 
         List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
 
-        List<byte[]> keyVals = HashNode.keyVals(db, hashNode.genKeyPartten());//顺序读取 ;field 过期逻辑复杂，暂不处理
+        List<byte[]> keyVals = HashNode.keyVals(db, hashNode.genKey1(getKey0(),"0".getBytes()).genKeyPartten());//顺序读取 ;field 过期逻辑复杂，暂不处理
 
 
         int i = 0;
@@ -473,15 +489,17 @@ public class HashMeta {
         ) {
             if (i % 2 == 0) {  //key 处理
                 curKey = bt;
-                ByteBuf hkeybuf1 = Unpooled.wrappedBuffer(bt); //优化 零拷贝
-                ByteBuf slice = hkeybuf1.slice(3 + getKey0().length, bt.length - 3 - getKey0().length);
 
-                //HashNode.parseValue(db,getKey(),bt);
+                byte[] f = hashNode.parseHField(getKey0(), bt);
 
-                replies.add(new BulkReply(slice.readBytes(slice.readableBytes()).array()));
-            } else {  // value
+                //ByteBuf hkeybuf1 = Unpooled.wrappedBuffer(bt); //优化 零拷贝
+                //ByteBuf slice = hkeybuf1.slice(3+NS.length + getKey0().length+TYPE.length, bt.length - 3 -NS.length - getKey0().length -TYPE.length);
+                //byte[] f = slice.readBytes(slice.readableBytes()).array();
 
-                replies.add(new BulkReply(HashNode.parseValue(db, curKey, bt)));
+                replies.add(new BulkReply(f));
+            } else {
+
+                replies.add(new BulkReply(hashNode.parseValue0(bt)));
             }
             i++;
         }
@@ -492,6 +510,7 @@ public class HashMeta {
 
     public IntegerReply hincrby(byte[] field1, byte[] increment2) throws RedisException {
         long incr = bytesToNum(increment2);
+
         BulkReply field = hget(field1);
 
         if (field.data() == null) {
@@ -548,10 +567,10 @@ public class HashMeta {
 
         for (byte[] fd : field1
         ) {
-            listFds.add(HashNode.genKey(getKey0(), fd));
+            listFds.add(hashNode.genKey1(getKey0(), fd).getKey());
         }
 
-        List<BulkReply> list = HashNode.__mget(listFds);
+        List<BulkReply> list = hashNode.hmget(listFds);
 
         return new MultiBulkReply(list.toArray(new BulkReply[list.size()]));
 
@@ -565,28 +584,23 @@ public class HashMeta {
 
         //处理 field key
         for (int i = 0; i < field_or_value1.length; i += 2) {
-            field_or_value1[i] = HashNode.genKey(getKey0(), field_or_value1[i]);
+            field_or_value1[i] = hashNode.genKey1(getKey0(), field_or_value1[i]).getKey();
         }
 
-        HashNode.__mput(field_or_value1);
+        hashNode.hmput(field_or_value1);
 
         return OK;
     }
 
-    protected IntegerReply __hputnx(byte[] field, byte[] value) throws RedisException {
-        boolean b = hget(field).data() == null ? false : true;
+    public IntegerReply hsetnx(byte[] key0, byte[] field1, byte[] value2) throws RedisException {
+
+        boolean b = hget(field1).data() == null ? false : true;
         if (b) {
             return integer(0);
         } else {
-            hset(field, value);
+            hset(field1, value2);
             return integer(1);
         }
-
-    }
-
-    public IntegerReply hsetnx(byte[] key0, byte[] field1, byte[] value2) throws RedisException {
-
-        return __hputnx(field1, value2);
 
     }
 
@@ -614,7 +628,7 @@ public class HashMeta {
 //                replies.add(new BulkReply(slice.readBytes(slice.readableBytes()).array()));
             } else {
 //                replies.add(new BulkReply(bt));
-                replies.add(new BulkReply(HashNode.parseValue(db, curKey, bt)));
+                replies.add(new BulkReply(hashNode.parseValue0(bt)));
 
             }
             i++;
