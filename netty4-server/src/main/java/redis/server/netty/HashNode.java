@@ -260,7 +260,7 @@ public class HashNode {
 
     /**
      * 构造模式 Key, 用来遍历元素；
-     *
+     * 使用了元素的类型
      * @return
      */
     public byte[] genKeyPartten() {
@@ -503,16 +503,16 @@ public class HashNode {
     }
 
     /**
-     * 主键存在则返回数据
+     * 主键存在 true 否则 false
      *
      * @return
      */
-    public static StringBuilder existsBy(RocksDB db, byte[] key) {
+    public static boolean existsBy(RocksDB db, byte[] key) {
+        return db.keyMayExist(key, new StringBuilder());//从缓存数据块中返回值数据不全不能使用
+    }
 
-        StringBuilder val = new StringBuilder();
-        if (db.keyMayExist(key, val)) {
-            return val;
-        } else return null;
+    public  boolean existsBy(byte[] key) {
+        return db.keyMayExist(key, new StringBuilder());//从缓存数据块中返回值数据不全不能使用
     }
 
 
@@ -533,14 +533,16 @@ public class HashNode {
      * @param key
      * @return
      */
-    public static int typeBy(RocksDB db, byte[] key) {
-        StringBuilder metaV = existsBy(db, key);
-        if (metaV == null) return -1; //主键不存在
-        //value format = ttl|type|size
-        String valType = metaV.substring(metaV.indexOf("|") + 1).substring(0, metaV.indexOf("|") + 1);
-        Integer vType = new Integer(valType);
-        return vType;
-    }
+    @Deprecated
+//    public static int typeBy(RocksDB db, byte[] key) {
+//        StringBuilder metaV = existsBy(key);
+//
+//        if (metaV == null || metaV.length() == 0 ) return -1; //主键不存在
+//        //value format = ttl|type|size
+//        String valType = metaV.substring(metaV.indexOf("|") + 1).substring(0, metaV.indexOf("|") + 1);
+//        Integer vType = new Integer(valType);
+//        return vType;
+//    }
 
     protected List<BulkReply> hmget(List<byte[]> listFds) throws RedisException {
         List<BulkReply> list = new ArrayList<BulkReply>();

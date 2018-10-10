@@ -217,37 +217,6 @@ public class StringMeta {
 //        }
 //
 
-//
-//        switch(vType){
-//
-//            case DataType.KEY_STRING:
-//
-//                System.out.println(DataType.KEY_STRING);break;
-//
-//            case DataType.KEY_HASH:
-//
-//                System.out.println(DataType.KEY_HASH);break;
-//
-//            case DataType.KEY_SET:
-//
-//                System.out.println(DataType.KEY_SET);break;
-//
-//            case DataType.KEY_LIST:
-//
-//                System.out.println(DataType.KEY_LIST);break;
-//
-//            case DataType.KEY_ZSET:
-//
-//                System.out.println(DataType.KEY_ZSET);break;
-//
-//
-//            default:
-//                System.out.println("default");break;
-//        }
-
-
-        //维护metakey；计数；清理其他类型的key；
-        //singleThreadExecutor
         ///////////
 
         genMetaKey(key0);
