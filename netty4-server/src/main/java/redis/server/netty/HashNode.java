@@ -237,7 +237,7 @@ public class HashNode {
             //数据过期处理 todo 暂不元素过期处理，简化逻辑
 //            if (ttl < now() && ttl != -1) {
 //                try {
-//                    db.delete(key0);
+//                    db.del(key0);
 ////                    valueBuf = null;
 //                } catch (RocksDBException e) {
 //                    e.printStackTrace();
@@ -318,7 +318,7 @@ public class HashNode {
 
             //数据过期处理 fixme 元素不支持过期，可否作为磁盘缓存增强功能特色；
 //            if (getTtl() < now() && getTtl() != -1) {
-//                db.delete(getKey());
+//                db.del(getKey());
 //                valBuf = null;
 //                return null;
 //            }

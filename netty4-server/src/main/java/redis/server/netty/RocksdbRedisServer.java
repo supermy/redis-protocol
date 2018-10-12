@@ -1758,7 +1758,7 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 //        StringBuilder sb=new StringBuilder();
 //        if(myexpires.keyMayExist(key0,sb)){
 //            try {
-//                myexpires.delete(key0);
+//                myexpires.del(key0);
 //            } catch (RocksDBException e) {
 //                throw new RedisException(e.getMessage());
 //            }
@@ -2089,11 +2089,11 @@ public class RocksdbRedisServer extends RocksdbRedis implements RedisServer {
 //
 //                try {
 //                    mydata.put(newkey1, mydata.get(key0));
-//                    mydata.delete(key0);
+//                    mydata.del(key0);
 //
 //                    if (__existsTTL(key0)) {
 //                        myexpires.put(newkey1, myexpires.get(key0));
-//                        myexpires.delete(key0);
+//                        myexpires.del(key0);
 //                    }
 //
 //
