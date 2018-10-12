@@ -97,18 +97,19 @@ public class HashMeta {
         return instance;
     }
 
-    private HashMeta genMetaVal(long count) {
-        this.metaVal = Unpooled.buffer(8);
+    private ByteBuf genMetaVal(long count) {
+        ByteBuf val = Unpooled.buffer(8);
 
-        this.metaVal.writeLong(-1); //ttl 无限期 -1
-        metaVal.writeBytes(DataType.SPLIT);
+        val.writeLong(-1); //ttl 无限期 -1
+        val.writeBytes(DataType.SPLIT);
 
-        this.metaVal.writeInt(DataType.KEY_HASH); //long 8 bit
-        metaVal.writeBytes(DataType.SPLIT);
+        val.writeInt(DataType.KEY_HASH); //long 8 bit
+        val.writeBytes(DataType.SPLIT);
 
-        this.metaVal.writeLong(count);  //数量
-        metaVal.writeBytes(DataType.SPLIT);
-        return this;
+        val.writeLong(count);  //数量
+        val.writeBytes(DataType.SPLIT);
+
+        return val;
     }
 
     /**
@@ -120,12 +121,12 @@ public class HashMeta {
      */
     protected HashMeta setMeta(long count) throws RedisException {
 
-        HashMeta hashMeta = genMetaVal(count);
+        this.metaVal = genMetaVal(count);
 
         System.out.println(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
 
         try {
-            db.put(hashMeta.getKey(), hashMeta.getVal());//fixme
+            db.put(getKey(), getVal());//fixme
         } catch (RocksDBException e) {
             e.printStackTrace();
             throw new RedisException(e.getMessage());
@@ -192,6 +193,10 @@ public class HashMeta {
         return this.metaVal.readBytes(metaVal.readableBytes()).array();
     }
 
+    public byte[] getVal(ByteBuf val) throws RedisException {
+        val.resetReaderIndex();
+        return val.readBytes(val.readableBytes()).array();
+    }
 
     public long getTtl() {
         return metaVal.getLong(0);
@@ -305,22 +310,52 @@ public class HashMeta {
         //数据持久化
         hashNode.genKey1(getKey0(), field1).hset(value2);
 
+        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换； setMeta(hlen().data());
+
         //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
-        singleThreadExecutor.execute(() -> {
+
+        MetaCountCaller taskCnt = new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_HASH_FIELD));
+        singleThreadExecutor.execute(taskCnt);
+
+        return this;
+    }
+
+
+    /**
+     * 异步进行hash计数
+     */
+    class MetaCountCaller implements Runnable {
+
+        private RocksDB db;
+        private byte[] key0;
+        private byte[] keyPartten;
+
+        public MetaCountCaller(RocksDB db, byte[] key, byte[] keyPartten) {
+            this.db = db;
+            this.key0 = key;
+            this.keyPartten = keyPartten;
+        }
+
+
+        @Override
+        public void run() {
+
+            long cnt = countBy(db, keyPartten);
+
+            System.out.println("MetaCountCaller ... cnt:" + cnt);
+
+
             try {
-                Thread.sleep(300);
-            } catch (InterruptedException e) {
+                db.put(key0, getVal(genMetaVal(cnt)));
+
+            } catch (RocksDBException e) {
                 e.printStackTrace();
-            }
-            try {
-                setMeta(hlen().data());
-                System.out.println("element count:" + hlen().data());
             } catch (RedisException e) {
                 e.printStackTrace();
             }
-        });
 
-        return this;
+
+        }
     }
 
 
@@ -342,14 +377,9 @@ public class HashMeta {
 
         //todo 重新计数
         //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
-        singleThreadExecutor.execute(() -> {
-            try {
-                setMeta(hlen().data());
-            } catch (RedisException e) {
-                e.printStackTrace();
-            }
-        });
+        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
 
+        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_HASH_FIELD)));
 
         return integer(field1.length);
     }
@@ -716,7 +746,7 @@ public class HashMeta {
         Thread.sleep(500);
 
 //        System.out.println("cnt:"+meta9.getCount());
-        Assert.assertEquals(1, meta9.getCount());
+        Assert.assertEquals(1, meta9.getMeta().getCount());
 
 
         meta9.genMetaKey("HashUpdate".getBytes()).hset("f2".getBytes(), "v2".getBytes());
@@ -724,7 +754,7 @@ public class HashMeta {
         Thread.sleep(500);
 
 //        System.out.println("val:"+meta9.getVal0());
-        Assert.assertEquals(2, meta9.getCount());
+        Assert.assertEquals(2, meta9.getMeta().getCount());
 
 //        System.out.println("hkeys9:"+meta9.hkeys());
 //        System.out.println("hvals:"+meta9.hvals());
@@ -789,6 +819,7 @@ public class HashMeta {
 
         Assert.assertEquals(meta2.hvals().toString(), Arrays.asList(strings5).toString());
 
+        System.out.println("Over ... ...");
 
     }
 
