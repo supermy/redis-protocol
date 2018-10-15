@@ -15,11 +15,12 @@ public class DataType {
 
   public static final int KEY_HASH = 3;
   public static final byte[] KEY_HASH_FIELD = "4".getBytes();
-  public static final int VAL_HASH_FIELD = 51;
+  public static final int VAL_HASH_FIELD = 54;
   public static final int KEY_SET = 5;
   public static final byte[] KEY_SET_MEMBER = "6".getBytes();
   public static final int KEY_LIST = 7;
   public static final byte[] KEY_LIST_ELEMENT = "8".getBytes();
+  public static final int VAL_LIST_ELEMENT = 58;
   public static final int KEY_ZSET = 11;
   public static final byte[] KEY_ZSET_SCORE = "9".getBytes();
   public static final byte[] KEY_ZSET_SORT = "10".getBytes();

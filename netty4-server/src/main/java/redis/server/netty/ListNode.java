@@ -13,7 +13,7 @@ import static redis.server.netty.ListNode.Meta.*;
 /**
  * List Meta 元素方便促常用操作
  *
- *
+ * value 格式： ttl|type|size|prev-next|value
  *
  * <p>
  *
@@ -21,7 +21,7 @@ import static redis.server.netty.ListNode.Meta.*;
  * Update by moyong on 2018/10/14。
  *
  */
-public class ListNode {
+public class ListNode extends  BaseNode{
 
 
 
@@ -84,13 +84,14 @@ public class ListNode {
      * @return
      * @throws RedisException
      */
-    public ListNode genKey(byte[] key0, byte[] seq1) throws RedisException {
+    public ListNode genKey(byte[] key0, long seq1) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("主键不能为空"));
         }
 
         this.key = key0;
-        this.seq = RocksdbRedis.bytesToLong(seq1);
+        this.seq = seq1;
+//        this.seq = RocksdbRedis.bytesToLong(seq1);
 
         ByteBuf preKeyBuf = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE, DataType.SPLIT);
 
@@ -201,6 +202,8 @@ public class ListNode {
     /**
      * 初始化节点值
      *
+     *  ttl|type|size|prev-next|value
+     *
      * @param val0
      * @param pseq
      * @param nseq
@@ -279,7 +282,7 @@ public class ListNode {
         return this;
     }
 
-    @Deprecated
+//    @Deprecated
     public void flush() throws RedisException {
 
 //        ByteBuf ttlBuf = Unpooled.buffer(12);
@@ -322,7 +325,15 @@ public class ListNode {
     @Deprecated
     public void destory() throws RedisException {
         try {
-            db.delete(key);
+            db.delete(getKey());
+        } catch (RocksDBException e) {
+            throw new RedisException(e.getMessage());
+        }
+    }
+
+    public void del() throws RedisException {
+        try {
+            db.delete(getKey());
         } catch (RocksDBException e) {
             throw new RedisException(e.getMessage());
         }
@@ -342,7 +353,7 @@ public class ListNode {
         if(getPseq() == -1){
             return null;
         }
-        return genKey(getKey0(),(getPseq()+"").getBytes()).get();
+        return genKey(getKey0(),getPseq()).get();
     }
 
     public ListNode setPseq(long val) throws RedisException {
@@ -350,11 +361,21 @@ public class ListNode {
         return this;
     }
 
-    @Deprecated
+    //@Deprecated
+
+    /**
+     * 更改字段值
+     * @param val0
+     * @throws RedisException
+     */
     public void setVal(byte[] val0) throws RedisException {
-//        set(PSEQ, val);
-        valBuf = Unpooled.wrappedBuffer(val0);
-//        val=val0;
+
+        int indexVal = 8 + 4 + 4 + 8 + 8 + 4;
+
+        ByteBuf ttlBuf = this.valBuf.slice(0,indexVal);
+        ByteBuf val1Buf = Unpooled.wrappedBuffer(val0);
+        ByteBuf valueBuf = Unpooled.wrappedBuffer(ttlBuf, val1Buf);//零拷贝
+
     }
 
     public long getNseq() throws RedisException {
@@ -365,7 +386,7 @@ public class ListNode {
         if(getNseq() == -1){
             return null;
         }
-        return genKey(getKey0(),(getNseq()+"").getBytes()).get();
+        return genKey(getKey0(),getNseq()).get();
     }
 
     public ListNode setNseq(long val) throws RedisException {
@@ -594,14 +615,7 @@ public class ListNode {
 
     }
 
-    /**
-     * 打印调试
-     * @param buf
-     */
-    private void print(ByteBuf buf) {
-        buf.resetReaderIndex();
-        System.out.println(new String(buf.readBytes(buf.readableBytes()).array()));
-    }
+
 
     /**
      * 节点数据信息
@@ -641,7 +655,7 @@ public class ListNode {
 
 //        ListNode meta =  ListNode.getInstance(RocksdbRedis.mydata, "ListTest".getBytes(), 0, "value".getBytes(), -1, -1);
         ListNode meta =  ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        meta.genKey( "ListTest".getBytes(),"0".getBytes()).put("value".getBytes(), -1, -1);
+        meta.genKey( "ListTest".getBytes(),0).put("value".getBytes(), -1, -1);
 
         Assert.assertArrayEquals(meta.getKey0(),"ListTest".getBytes());
         Assert.assertEquals(meta.getSeq(),0);
@@ -682,11 +696,11 @@ public class ListNode {
 
         ListNode meta1 =  ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
 
-        meta1.genKey( "ListTest".getBytes(),"12".getBytes()).get();
+        meta1.genKey( "ListTest".getBytes(),12).get();
 
         meta1.info();
 
-        meta1.genKey( "ListTest".getBytes(),"0".getBytes()).get();
+        meta1.genKey( "ListTest".getBytes(),0).get();
 
         meta1.info();
 

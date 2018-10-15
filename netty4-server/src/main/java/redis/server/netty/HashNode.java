@@ -36,7 +36,7 @@ import static redis.netty4.BulkReply.NIL_REPLY;
  * hset hget
  * </p>
  */
-public class HashNode {
+public class HashNode extends BaseNode{
 
     private static byte[] NS;
     private static byte[] TYPE = DataType.KEY_HASH_FIELD;
@@ -126,6 +126,7 @@ public class HashNode {
     }
 
     public byte[] getField0() throws RedisException {
+        //fixme 从硬盘载入的数据
         return field;
     }
 

@@ -283,7 +283,7 @@ public class RocksJavaTest {
         for (iter3.seekToFirst(); iter3.isValid(); iter3.next()) {
             System.out.println(new String(iter3.key()) + ":" + new String(iter3.value()));
 
-//            rocksDB.delete(iter3.key());
+//            rocksDB.del(iter3.key());
 
         }
 //        ReadOptions ro = new ReadOptions();
@@ -345,7 +345,7 @@ public class RocksJavaTest {
 //        System.out.println(db.get(columnFamilies.get("nseq"),"1".getBytes()));
 //        System.out.println(db.get(columnFamilies.get("cseq"),"1".getBytes()));
 
-        System.out.println("<<<deleteRange<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        System.out.println("<<<cleanBy<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
 
         //批量删除
         db.put("abc#1".getBytes(),"value".getBytes());
@@ -363,7 +363,7 @@ public class RocksJavaTest {
         db.put("ach#6".getBytes(),"value".getBytes());
 
         //清除某个类型的数据
-//        db.deleteRange("abc#".getBytes(),"abc#z".getBytes());
+//        db.cleanBy("abc#".getBytes(),"abc#z".getBytes());
         db.deleteRange("abd#".getBytes(),"abd#".getBytes());
 
         RocksIterator iter = db.newIterator();
@@ -372,7 +372,7 @@ public class RocksJavaTest {
             System.out.println(new String(iter.key()) + ":" + new String(iter.value()));
         }
 
-//        db.deleteRange("abc3".getBytes(),"abf4".getBytes());
+//        db.cleanBy("abc3".getBytes(),"abf4".getBytes());
 
 
         db.compactRange();

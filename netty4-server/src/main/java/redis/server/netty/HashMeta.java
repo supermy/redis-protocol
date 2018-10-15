@@ -42,23 +42,9 @@ import static redis.util.Encoding.bytesToNum;
  * <p>
  * todo 重构&测试 单个element 的操作方法在node;多个element 操作方法在meta,meta 的操作方法；
  */
-public class HashMeta {
-
-    //    private static byte[] NS = "+".getBytes();
-//    private static byte[] TYPE = "hash".getBytes();
-    ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
-
+public class HashMeta extends BaseMeta {
 
     protected static HashNode hashNode;
-
-
-    private byte[] NS;
-    private static byte[] TYPE = DataType.KEY_META;
-
-    private RocksDB db;
-
-    private ByteBuf metaKey;
-    private ByteBuf metaVal;
 
     private HashMeta() {
     }
@@ -157,27 +143,6 @@ public class HashMeta {
     }
 
 
-    /**
-     * 参见genkey1,获取key0的分解
-     *
-     * @return
-     * @throws RedisException
-     */
-    public byte[] getKey0() throws RedisException {
-        metaKey.resetReaderIndex();
-        ByteBuf bb = metaKey.slice(NS.length + 1, metaKey.readableBytes() - NS.length - DataType.SPLIT.length * 2 - TYPE.length);
-        return bb.readBytes(bb.readableBytes()).array();
-    }
-
-
-    public String getKey0Str() throws RedisException {
-        return new String(getKey0());
-    }
-
-    public byte[] getKey() throws RedisException {
-        metaKey.resetReaderIndex();
-        return metaKey.readBytes(metaKey.readableBytes()).array();
-    }
 
 
     public long getVal0() throws RedisException {
@@ -260,28 +225,7 @@ public class HashMeta {
         return sb.toString();
     }
 
-    /**
-     * 批量删除主键(0-9.A-Z,a-z)；
-     * 根据genkey 特征，增加风格符号，避免误删除数据；
-     *
-     * @param key0
-     * @throws RedisException
-     */
-    public void deleteRange(byte[] key0) throws RedisException {
 
-        ByteBuf byteBufBegin = Unpooled.wrappedBuffer(NS, DataType.SPLIT, key0, DataType.SPLIT);
-        ByteBuf byteBufEnd = Unpooled.wrappedBuffer(NS, DataType.SPLIT, key0, DataType.SPLIT, "z".getBytes());
-
-        byte[] begin = byteBufBegin.readBytes(byteBufBegin.readableBytes()).array();
-        byte[] end = byteBufEnd.readBytes(byteBufEnd.readableBytes()).array();
-
-        try {
-            db.deleteRange(begin, end);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-    }
 
     /**
      * 如果字段是哈希表中的一个新建字段，并且值设置成功，返回 1 。 如果哈希表中域字段已经存在且旧值已被新值覆盖，返回 0 。
@@ -311,8 +255,6 @@ public class HashMeta {
         hashNode.genKey1(getKey0(), field1).hset(value2);
 
         //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换； setMeta(hlen().data());
-
-        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
 
         MetaCountCaller taskCnt = new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_HASH_FIELD));
         singleThreadExecutor.execute(taskCnt);
@@ -375,9 +317,7 @@ public class HashMeta {
             hashNode.genKey1(getKey0(), hkey).hdel();
         }
 
-        //todo 重新计数
-        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
-        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
+        //todo 重新计数；增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
 
         singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_HASH_FIELD)));
 
