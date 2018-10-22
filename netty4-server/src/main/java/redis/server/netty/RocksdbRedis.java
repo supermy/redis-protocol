@@ -388,9 +388,9 @@ public class RocksdbRedis extends RedisBase {
      * @throws RedisException
      */
     protected StatusReply __ltrim(byte[] key0, byte[] start1, byte[] stop2) throws RedisException {
-
-        redis.server.netty.ListMeta meta=new redis.server.netty.ListMeta(mydata,key0,false);
-
+        redis.server.netty.ListMeta meta=null;//fixme
+//        redis.server.netty.ListMeta meta=new redis.server.netty.ListMeta(mydata,key0,false);
+//
 //        long count = getListMeta(key0, COUNT); // FIXME: 2017/11/9  三次访问
 //        Long sseq = getListMeta(key0, SSEQ);
 //        long eseq = getListMeta(key0, ESEQ);
