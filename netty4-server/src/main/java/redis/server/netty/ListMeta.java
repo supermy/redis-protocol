@@ -9,13 +9,10 @@ import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
 import redis.netty4.*;
 import redis.server.netty.utis.DataType;
-import redis.util.BytesValue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
@@ -26,9 +23,14 @@ import static redis.server.netty.RedisBase.notInteger;
 
 
 /**
+ *
+ * todo 只支持push pop 指令，采用rocks原生的数据结构,减少交互次数，提高数据处理效率；
+ *
  * List Meta 元素方便促常用操作
  * List        [<ns>] <key> KEY_META                 KEY_LIST <MetaObject>
- *             [<ns>] <key> KEY_LIST_ELEMENT <index> KEY_LIST_ELEMENT <element-value>
+ * [<ns>] <key> KEY_LIST_ELEMENT <index> KEY_LIST_ELEMENT <element-value>
+ *
+ *     采用链表实现 RocksDb 对List 数据类型的支持，与硬盘交互次数较多，性能影响较大，建议优先使用hash 数据类型。
  *
  * <p>
  * Created by moyong on 2017/11/9.
@@ -48,8 +50,9 @@ public class ListMeta extends BaseMeta {
     private int size;
 
 
-
     public long getVal0() throws RedisException {
+        print(metaVal);
+        metaVal.resetReaderIndex();
         return metaVal.getLong(8 + 4 + 2);
     }
 
@@ -127,7 +130,6 @@ public class ListMeta extends BaseMeta {
     }
 
 
-
     private ByteBuf genMetaVal(long count, long sseq, long eseq, long cseq) {
 
         ByteBuf ttlBuf = Unpooled.buffer(12);
@@ -148,7 +150,12 @@ public class ListMeta extends BaseMeta {
         System.out.println(String.format("count:%d 第一个元素：%d 最后一个元素：%d 自增主键：%d  value:%s", count, sseq, eseq, sseq, new String(val1.readBytes(val1.readableBytes()).array())));
 
 
-//        metaVal.resetReaderIndex();
+        val1.resetReaderIndex();
+        ttlBuf.resetReaderIndex();
+//        this.metaVal=Unpooled.wrappedBuffer(ttlBuf, val1);
+//        print(ttlBuf);
+//        print(val1);
+//        print(metaVal);
         return Unpooled.wrappedBuffer(ttlBuf, val1);
 
 //        return metaVal;
@@ -168,7 +175,7 @@ public class ListMeta extends BaseMeta {
         System.out.println(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
 
         try {
-            db.put(getKey(), getVal());//fixme
+            db.put(getKey(), getVal());
         } catch (RocksDBException e) {
             e.printStackTrace();
             throw new RedisException(e.getMessage());
@@ -199,7 +206,7 @@ public class ListMeta extends BaseMeta {
         return this;
     }
 
-///////////////
+    ///////////////
     public ListMeta(RocksDB db0, byte[] key0, long count, long sseq, long eseq, long cseq) throws RedisException {
         this.db = db0;
         create(key0, count, sseq, eseq, cseq);
@@ -220,8 +227,6 @@ public class ListMeta extends BaseMeta {
 
         return this;
     }
-
-
 
 
     /**
@@ -297,7 +302,7 @@ public class ListMeta extends BaseMeta {
 //        System.out.println(metaVal);
 
         try {
-            db.put(getKey(),getVal());
+            db.put(getKey(), getVal());
         } catch (RocksDBException e) {
             throw new RedisException(e.getMessage());
         }
@@ -334,6 +339,8 @@ public class ListMeta extends BaseMeta {
      * @return
      */
     public long getCount() throws RedisException {
+                if (metaVal==null) return 0;
+
         return get(COUNT);
     }
 
@@ -409,8 +416,9 @@ public class ListMeta extends BaseMeta {
     private long get(Meta fd) throws RedisException {
         long result = 0;
 
-        this.metaVal.resetReaderIndex();
+//        if (metaVal==null) return result;
 
+        this.metaVal.resetReaderIndex();
         int ttlSize = 8 + 4 + 2;
         ByteBuf linkBuf = metaVal.slice(ttlSize, metaVal.readableBytes() - ttlSize);
 
@@ -454,15 +462,15 @@ public class ListMeta extends BaseMeta {
                 break;
 
             case SSEQ:
-                metaVal.setLong(ttlSize+8, pval);
+                metaVal.setLong(ttlSize + 8, pval);
                 break;
 
             case ESEQ:
-                metaVal.setLong(ttlSize+16, pval);
+                metaVal.setLong(ttlSize + 16, pval);
                 break;
 
             case CSEQ:
-                metaVal.setLong(ttlSize+24, pval);
+                metaVal.setLong(ttlSize + 24, pval);
                 break;
 
             default:
@@ -539,24 +547,19 @@ public class ListMeta extends BaseMeta {
         final WriteBatch batch = new WriteBatch();
 
         for (byte[] val1 : value1
-                ) {
+        ) {
+
 
             if (isNew()) {
 
-//                ListNode newnode =  ListNode.getInstance(RocksdbRedis.mydata, getKey0(), 0, val1, -1, -1);
-                listNode.genKey(getKey0(),0).put(val1, -1, -1);
-
-//                ListNode newnode1 = new ListNode(RocksdbRedis.mydata, getKey0(), 0);
-
-//                incrCseq();
-
+                listNode.genKey(getKey0(), 0).put(val1, -1, -1);
+                listNode.info();
                 //设置meta 参数
-                setMeta(1,listNode.getSeq(),listNode.getSeq(),listNode.getSeq());//fixme
+                setMeta(1, listNode.getSeq(), listNode.getSeq(), listNode.getSeq());//fixme
 
                 setCseq(listNode.getSeq());
                 setSseq(listNode.getSeq());
                 setEseq(listNode.getSeq());
-
 
             } else {
 
@@ -564,25 +567,36 @@ public class ListMeta extends BaseMeta {
                 //头部节点
                 ListNode firstNode = getFirstNode();
 
+                firstNode.info();
+
                 //meta=主键++
                 incrCseq();
 
                 //新建元素
 //                ListNode newnode = new ListNode(RocksdbRedis.mydata, getKey0(), getCseq(), val1, -1, firstNode.getSeq());
+                //long seq = firstNode.getSeq();
+
+
                 listNode.genKey(getKey0(), getCseq()).put(val1, -1, firstNode.getSeq());
 
 
                 //变更元素指针
-                firstNode.setPseq(listNode.getSeq());
-//                firstNode.info();
+
+
+                long seq1 = listNode.getSeq();
+                listNode.info();
+
+                firstNode.setPseq(seq1);  //fixme
                 firstNode.flush();  ///////go go go
-//                firstNode.info();
+                firstNode.info();
 
                 //meta-开始指针
                 setSseq(getCseq());
+
+                incrCount();
+
             }
 
-            incrCount();
 
             this.info();
         }
@@ -597,6 +611,7 @@ public class ListMeta extends BaseMeta {
     /**
      * Redis Rpush 命令用于将一个或多个值插入到列表的尾部(最右边)。
      * 如果列表不存在，一个空列表会被创建并执行 RPUSH 操作。 当列表存在但不是列表类型时，返回一个错误。
+     *
      * @param value1
      * @return
      * @throws RedisException
@@ -616,14 +631,14 @@ public class ListMeta extends BaseMeta {
         final WriteBatch batch = new WriteBatch();
 
         for (byte[] val1 : value1
-                ) {
+        ) {
 
             if (isNew()) {
 
                 //ListNode newnode =  ListNode.getInstance(RocksdbRedis.mydata, getKey0(), 0, val1, -1, -1);
-                listNode.genKey(getKey0(),0).put(val1, -1, -1);
+                listNode.genKey(getKey0(), 0).put(val1, -1, -1);
 
-                setMeta(1,listNode.getSeq(),listNode.getSeq(),listNode.getSeq());//fixme
+                setMeta(1, listNode.getSeq(), listNode.getSeq(), listNode.getSeq());//fixme
 
                 setCseq(listNode.getSeq());
                 setSseq(listNode.getSeq());
@@ -664,6 +679,7 @@ public class ListMeta extends BaseMeta {
 
     /**
      * Redis Lpop 命令用于移除并返回列表的第一个元素。
+     *
      * @return
      * @throws RedisException
      */
@@ -679,6 +695,7 @@ public class ListMeta extends BaseMeta {
 
     /**
      * Redis Rpop 命令用于移除并返回列表的最后一个元素。
+     *
      * @return
      * @throws RedisException
      */
@@ -729,6 +746,7 @@ public class ListMeta extends BaseMeta {
      * Redis Lrange 返回列表中指定区间内的元素，区间以偏移量 START 和 END 指定。 其中 0 表示列表的第一个元素，
      * 1 表示列表的第二个元素，以此类推。 你也可以使用负数下标，以 -1 表示列表的最后一个元素， -2 表示列表的倒数第二个元素，
      * 以此类推。
+     *
      * @param start1
      * @param stop2
      * @return
@@ -743,6 +761,11 @@ public class ListMeta extends BaseMeta {
         long s = RocksdbRedis.__torange(start1, getCount());
         long e = RocksdbRedis.__torange(stop2, getCount());
 
+//        System.out.println("----------range");
+//        System.out.println(s);
+//        System.out.println(e);
+//        System.out.println(getCount());
+
         ListNode node = getFirstNode();
 
         for (int j = 0; j < getCount(); j++) {
@@ -751,12 +774,30 @@ public class ListMeta extends BaseMeta {
                 results.add(new BulkReply(node.getVal0()));
             }
 
+//            System.out.println("one-------------");
+//            node.info();
+
+            if (node.getNseq()==-1) {
+//                System.out.println("one-------------11111");
+
+                break;
+            }
+
+//            System.out.println(node.getNseq());
+
             ListNode node1 = node.next();
 
+
             if (node1 == null) {
+//                System.out.println("one-------------22222");
+
                 break;
+
             } else
                 node = node1;
+
+//            System.out.println("two-------------");
+//            node1.info();
 
 
             //超出范围跳出循环
@@ -770,7 +811,7 @@ public class ListMeta extends BaseMeta {
 
     /**
      * Redis Lpushx 将一个值插入到已存在的列表头部，列表不存在时操作无效。
-     *
+     * <p>
      * 非自创建模式
      *
      * @param value1
@@ -784,6 +825,7 @@ public class ListMeta extends BaseMeta {
 
     /**
      * Redis Rpushx 命令用于将一个值插入到已存在的列表尾部(最右边)。如果列表不存在，操作无效。
+     *
      * @param value1
      * @return
      * @throws RedisException
@@ -804,21 +846,27 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
 //    @Deprecated
-//    public BulkReply rpoplpush(byte[] source0, byte[] destination1) throws RedisException {
-//
-////
-////        List<BytesValue> source = _getlist(source0, false);
-////        int l;
-////        if (source == null || (l = source.size()) == 0) {
-////            return NIL_REPLY;
-////        } else {
-////            List<BytesValue> dest = _getlist(destination1, true);
-////            BytesValue popped = source.get(l - 1);
-////            source.remove(l - 1);
-////            dest.add(0, popped);
-////            return new BulkReply(popped.getBytes());
-////        }
-//    }
+    public BulkReply rpoplpush(byte[] source0, byte[] destination1) throws RedisException {
+
+
+        BulkReply rpop = rpop();
+
+        genMetaKey(destination1).rpush(rpop.data().array());
+
+        return rpop;
+
+//        List<BytesValue> source = _getlist(source0, false);
+//        int l;
+//        if (source == null || (l = source.size()) == 0) {
+//            return NIL_REPLY;
+//        } else {
+//            List<BytesValue> dest = _getlist(destination1, true);
+//            BytesValue popped = source.get(l - 1);
+//            source.remove(l - 1);
+//            dest.add(0, popped);
+//            return new BulkReply(popped.getBytes());
+//        }
+    }
 
     /**
      * Redis Lset 通过索引来设置元素的值。
@@ -839,7 +887,10 @@ public class ListMeta extends BaseMeta {
             } else
                 node = node1;
         }
+//        node.info();
+//        System.out.println("update val:"+new String(value2));
         node.setVal(value2);
+//        node.info();
         node.flush();
         return OK;
     }
@@ -873,16 +924,23 @@ public class ListMeta extends BaseMeta {
             for (int j = 0; j < cnt; j++) {
 
                 if (Arrays.equals(node.getVal0(), value2)) {
+
                     //修复上下节点
-                    ListNode prev = node.prev();
-                    prev.setNseq(node.getNseq());
-                    prev.flush();
+                    if (!node.isFirst()) {
+//                        System.out.println("lrem:"+node.getNseq());
+                        ListNode prev = node.prev();
+//                        System.out.println("lrem:"+node.getNseq());
+                        prev.setNseq(node.getNseq());
+                        prev.flush();
+                    }
 
-                    ListNode next = node.next();
-                    next.setPseq(node.getPseq());
-                    next.flush();
+                    if (!node.isLast()) {
+                        ListNode next = node.next();
+                        next.setPseq(node.getPseq());
+                        next.flush();
+                    }
 
-                    node.destory();
+                    node.del();
 
                     delcnt++;
 
@@ -898,6 +956,10 @@ public class ListMeta extends BaseMeta {
                     }
 
                 }
+
+//                if (node.getPseq() == -1) {
+//                    break;
+//                }
 
                 ListNode node1 = node.next();
 
@@ -919,16 +981,23 @@ public class ListMeta extends BaseMeta {
             for (int j = 0; j < cnt; j++) {
 
                 if (Arrays.equals(node.getVal0(), value2)) {
-                    //修复上下节点
-                    ListNode prev = node.prev();
-                    prev.setNseq(node.getNseq());
-                    prev.flush();
 
-                    ListNode next = node.next();
-                    next.setPseq(node.getPseq());
-                    next.flush();
+                    if (!node.isLast()) { //尾部节点 直接删除
 
-                    node.destory();
+                        //修复上下节点
+                        ListNode prev = node.prev();
+                        prev.setNseq(node.getNseq());
+                        prev.flush();
+                    }
+
+                    if (!node.isFirst()) { //头部节点直接删除
+
+                        ListNode next = node.next();
+                        next.setPseq(node.getPseq());
+                        next.flush();
+                    }
+
+                    node.del();
 
                     delcnt++;
 
@@ -944,6 +1013,10 @@ public class ListMeta extends BaseMeta {
                     }
 
                 }
+
+//                if (node.getPseq() == -1) {
+//                    break;
+//                }
 
                 ListNode node1 = node.prev();
 
@@ -968,11 +1041,10 @@ public class ListMeta extends BaseMeta {
 
     /**
      * 让列表只保留指定区间内的元素，不在指定区间之内的元素都将被删除。
-     *
+     * <p>
      * Redis Ltrim 对一个列表进行修剪(trim)，就是说，让列表只保留指定区间内的元素，不在指定区间之内的元素都将被删除。
      * 下标 0 表示列表的第一个元素，以 1 表示列表的第二个元素，以此类推。 你也可以使用负数下标，以 -1 表示列表的最后一个元素，
      * -2 表示列表的倒数第二个元素，以此类推。
-     *
      *
      * @param start1
      * @param stop2
@@ -1092,7 +1164,7 @@ public class ListMeta extends BaseMeta {
                     if (node.isLast()) {
                         setEseq(listNode.getSeq());
 
-                    }else{
+                    } else {
                         ListNode next = node.next();
 
                         next.setPseq(listNode.getSeq());
@@ -1142,13 +1214,13 @@ public class ListMeta extends BaseMeta {
     }
 
     protected ListNode getLastNode() throws RedisException {
-//        return new ListNode(RocksdbRedis.mydata, getKey0(), getEseq());
-        return listNode.genKey(getKey0(), getEseq()).get();
+//        return ListNode.create(db,NS).genKey(getKey0(), getEseq()).get();
+        return listNode.create().genKey(getKey0(), getEseq()).get();
     }
 
     protected ListNode getFirstNode() throws RedisException {
-//        return new ListNode(RocksdbRedis.mydata, getKey0(), getSseq());
-        return listNode.genKey(getKey0(), getSseq()).get();
+//        return  ListNode.create(db,NS).genKey(getKey0(), getSseq()).get();
+        return  listNode.create().genKey(getKey0(), getSseq()).get();
     }
 
 
@@ -1192,7 +1264,7 @@ public class ListMeta extends BaseMeta {
 
         metaRPush.info();
 
-        String[] strings3 = {"XXX","YYY" ,"ZZZ"};
+        String[] strings3 = {"XXX", "YYY", "ZZZ"};
         Assert.assertEquals(metaRPush.lrange("0".getBytes(), "2".getBytes()).toString(), Arrays.asList(strings3).toString());
 
 
@@ -1239,85 +1311,39 @@ public class ListMeta extends BaseMeta {
 
     /**
      * 左侧插入数据集测试
+     *
      * @throws RedisException
      */
     private static void testListL() throws RedisException {
-        //测试删除
-        ListMeta meta0 = ListMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        meta0.genMetaKey("ListPUSH".getBytes()).deleteRange(meta0.getKey0());
 
-        meta0.genMetaKey("ListPUSH".getBytes()).lpush();
-
-        //LPUSHX 已经存在的 key
-//        try {
-//            new ListMeta(RocksdbRedis.mymeta, "ListInit".getBytes(), false);
-//        } catch (Exception e) {
-//            Assert.assertTrue(e instanceof RedisException);
-//            Assert.assertTrue(e.getMessage().contains("没有如此的主键"));
-//        }
-
-        //测试创建
-        ListMeta meta1 = new ListMeta(RocksdbRedis.mymeta, "ListInit".getBytes(), true);
-
-        Assert.assertEquals(0, meta1.getCount());
-        Assert.assertEquals(-1, meta1.getSseq());
-        Assert.assertEquals(-1, meta1.getEseq());
-        Assert.assertEquals(-1, meta1.getCseq());
-        Assert.assertArrayEquals("ListInit".getBytes(), meta1.getKey0());
-
-
-        //测试数据更新
-        meta1.setKey0("CSTList".getBytes());
-        Assert.assertArrayEquals(meta1.getKey0(), "CSTList".getBytes());
-        meta1.setCount(2);
-        Assert.assertEquals(2, meta1.getCount());
-        meta1.setSseq(3);
-        Assert.assertEquals(3, meta1.getSseq());
-        meta1.setEseq(4);
-        Assert.assertEquals(4, meta1.getEseq());
-        meta1.setCseq(5);
-        Assert.assertEquals(5, meta1.getCseq());
-
-
-        //测试数据持久化
-        meta1.info();
-        meta1.flush();//持久化
-
-        //引入
-        ListMeta meta2 = new ListMeta(RocksdbRedis.mymeta, "CSTList".getBytes(), false);
-        meta2.info();
-        Assert.assertEquals(5, meta2.getCseq());
-        meta2.incrCseq();
-        Assert.assertEquals(6, meta2.getCseq());
-
-        System.out.println("============test lpush");
-
-        //测试 lpush
-        ListMeta metaLPush0 = new ListMeta(RocksdbRedis.mymeta, "LPUSH".getBytes(), true);
-        metaLPush0.destory();
-        ListMeta metaLPush = new ListMeta(RocksdbRedis.mymeta, "LPUSH".getBytes(), true);
+        ListMeta metaLPush = ListMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+        metaLPush.genMetaKey("LPUSH".getBytes()).deleteRange(metaLPush.getKey0());
 
         byte[][] lpusharray = {"XXX".getBytes(), "YYY".getBytes(), "ZZZ".getBytes(), "111".getBytes(), "222".getBytes(), "333".getBytes()};
-
         Assert.assertEquals(metaLPush.lpush(lpusharray).data().intValue(), 6);
 
         Assert.assertEquals(metaLPush.getCount(), 6);
         Assert.assertEquals(metaLPush.getSseq(), 5);
         Assert.assertEquals(metaLPush.getEseq(), 0);
         Assert.assertEquals(metaLPush.getCseq(), 5);
+        Assert.assertArrayEquals("LPUSH".getBytes(), metaLPush.getKey0());
+
 
         System.out.println("========================2 !!!");
 
-        ListNode n3 = new ListNode(RocksdbRedis.mydata, "LPUSH".getBytes(), 2);
+        ListNode n3 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+        n3.genKey("LPUSH".getBytes(), 2).get();
+        n3.info();
         Assert.assertEquals(n3.getNseq(), 1);
         Assert.assertEquals(n3.getPseq(), 3);
         Assert.assertEquals(n3.getSeq(), 2);
         Assert.assertEquals(n3.getSize(), 3);
 
         Assert.assertArrayEquals(n3.getVal0(), "ZZZ".getBytes());
+
         System.out.println("========================1 !!!");
 
-        ListNode n2 = new ListNode(RocksdbRedis.mydata, "LPUSH".getBytes(), 1);
+        ListNode n2 = n3.genKey("LPUSH".getBytes(), 1).get();
 
         Assert.assertEquals(n2.getNseq(), 0);
         Assert.assertEquals(n2.getPseq(), 2);
@@ -1328,7 +1354,9 @@ public class ListMeta extends BaseMeta {
         System.out.println("========================0 !!!");
 
 
-        ListNode n1 = new ListNode(RocksdbRedis.mydata, "LPUSH".getBytes(), 0);
+//        ListNode n1 = new ListNode(RocksdbRedis.mydata, "LPUSH".getBytes(), 0);
+        ListNode n1 = n3.genKey("LPUSH".getBytes(), 0).get();
+
         Assert.assertEquals(n1.getNseq(), -1);
         Assert.assertEquals(n1.getPseq(), 1);
         Assert.assertEquals(n1.getSeq(), 0);
@@ -1346,25 +1374,50 @@ public class ListMeta extends BaseMeta {
 
         Assert.assertEquals(metaLPush.llen().data().intValue(), 5);
 
-        System.out.println("========================LINDEX !!!");
+        System.out.println("========================1 LINDEX !!!");
 
         Assert.assertArrayEquals(metaLPush.lindex("1".getBytes()).data().array(), "111".getBytes());
 
         Assert.assertEquals(metaLPush.lset("1".getBytes(), "Modify".getBytes()), OK);
 
+
         Assert.assertArrayEquals(metaLPush.lindex("1".getBytes()).data().array(), "Modify".getBytes());
 
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 5);
 
-        System.out.println("========================LRANGE !!!");
+        System.out.println("========================2 LRANGE !!!");
+
+        n3.genKey("LPUSH".getBytes(), 0).get().info();
+        n3.genKey("LPUSH".getBytes(), 1).get().info();
+        n3.genKey("LPUSH".getBytes(), 2).get().info();
+        n3.genKey("LPUSH".getBytes(), 3).get().info();
+        n3.genKey("LPUSH".getBytes(), 4).get().info();
+
+        System.out.println("========================2 LRANGE !!!");
 
         String[] strings = {"222", "Modify", "ZZZ"};
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "2".getBytes()).toString(), Arrays.asList(strings).toString());
 
+//        System.out.println("*********count 111:"+metaLPush.getCount());
         Assert.assertEquals(metaLPush.lrem("1".getBytes(), "Modify".getBytes()).data().intValue(), 1);
+
+
+//        n3.genKey("LPUSH".getBytes(), 0).get().info();
+//        n3.genKey("LPUSH".getBytes(), 1).get().info();
+//        n3.genKey("LPUSH".getBytes(), 2).get().info();
+//        n3.genKey("LPUSH".getBytes(), 4).get().info();
+
+//        System.out.println("**********count 222:"+metaLPush.getCount());
+
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 4);
+
+        System.out.println("--------------------------- !!!");
+
+
         String[] strings1 = {"222", "ZZZ", "YYY", "XXX"};
+
         metaLPush.info();
+
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings1).toString());
 
         Assert.assertEquals(metaLPush.ltrim("1".getBytes(), "2".getBytes()).toString(), "OK");
@@ -1372,8 +1425,8 @@ public class ListMeta extends BaseMeta {
         String[] strings2 = {"ZZZ", "YYY"};
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings2).toString());
 
-        Assert.assertEquals(metaLPush.linsert("BEFORE".getBytes(),"YYY".getBytes(), "OOO".getBytes()).data().longValue(), metaLPush.getCount());
-        String[] strings3 = {"ZZZ","OOO" ,"YYY"};
+        Assert.assertEquals(metaLPush.linsert("BEFORE".getBytes(), "YYY".getBytes(), "OOO".getBytes()).data().longValue(), metaLPush.getCount());
+        String[] strings3 = {"ZZZ", "OOO", "YYY"};
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings3).toString());
     }
 

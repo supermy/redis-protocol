@@ -78,6 +78,19 @@ public class ListNode extends  BaseNode{
     }
 
     /**
+     * 创建一个新的节点实例
+     * @param db0
+     * @param ns0
+     * @return
+     */
+    public ListNode create() {
+        ListNode ins = new ListNode();
+        ins.db = db;
+        ins.NS = NS;
+        return ins;
+    }
+
+    /**
      * 构造 MetaKey
      *
      * @param key0
@@ -98,9 +111,9 @@ public class ListNode extends  BaseNode{
         ByteBuf val0Buf = Unpooled.buffer(8);
         val0Buf.writeLong(seq);
 
-        instance.keyBuf = Unpooled.wrappedBuffer(preKeyBuf, val0Buf);
+        this.keyBuf = Unpooled.wrappedBuffer(preKeyBuf, val0Buf);
 
-        return instance;
+        return this;
     }
 
     /**
@@ -113,9 +126,10 @@ public class ListNode extends  BaseNode{
      * @throws RedisException
      */
     public ListNode put(byte[] val0, long pseq1, long nseq2) throws RedisException {
-
+//        System.out.println(pseq1);
+//        System.out.println(nseq2);
         this.valBuf = setVal(val0, pseq1, nseq2);
-
+//        this.info();
         try {
             db.put(getKey(), getVal());
 
@@ -272,6 +286,7 @@ public class ListNode extends  BaseNode{
 
             if(values == null){
                 this.valBuf=null;
+                return null;
             }
             this.valBuf= Unpooled.wrappedBuffer(values);
 
@@ -353,7 +368,10 @@ public class ListNode extends  BaseNode{
         if(getPseq() == -1){
             return null;
         }
-        return genKey(getKey0(),getPseq()).get();
+
+        return create().genKey(getKey0(),getPseq()).get();
+
+//        return genKey(getKey0(),getPseq()).get();
     }
 
     public ListNode setPseq(long val) throws RedisException {
@@ -374,7 +392,7 @@ public class ListNode extends  BaseNode{
 
         ByteBuf ttlBuf = this.valBuf.slice(0,indexVal);
         ByteBuf val1Buf = Unpooled.wrappedBuffer(val0);
-        ByteBuf valueBuf = Unpooled.wrappedBuffer(ttlBuf, val1Buf);//零拷贝
+        valBuf= Unpooled.wrappedBuffer(ttlBuf, val1Buf);//零拷贝
 
     }
 
@@ -384,9 +402,13 @@ public class ListNode extends  BaseNode{
 
     public ListNode next() throws RedisException {
         if(getNseq() == -1){
+
             return null;
         }
-        return genKey(getKey0(),getNseq()).get();
+//        return genKey(getKey0(),getNseq()).get();
+        return create().genKey(getKey0(),getNseq()).get();
+
+//        create().genKey(getKey0(),getPseq()).get();
     }
 
     public ListNode setNseq(long val) throws RedisException {
