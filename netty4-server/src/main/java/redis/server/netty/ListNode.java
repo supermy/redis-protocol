@@ -2,6 +2,7 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -12,29 +13,29 @@ import static redis.server.netty.ListNode.Meta.*;
 
 /**
  * List Meta 元素方便促常用操作
- *
+ * <p>
  * value 格式： ttl|type|size|prev-next|value
  *
  * <p>
- *
+ * <p>
  * Created by moyong on 2017/11/9.
  * Update by moyong on 2018/10/14。
- *
  */
-public class ListNode extends  BaseNode{
+public class ListNode extends BaseNode {
 
+    private static Logger log = Logger.getLogger(ListNode.class);
 
 
     public boolean isFirst() throws RedisException {
-        return getPseq()==-1;
+        return getPseq() == -1;
     }
 
     public boolean isLast() throws RedisException {
-        return getNseq()==-1;
+        return getNseq() == -1;
     }
 
     enum Meta {
-        KEY, SEQ, TTL, SIZE, PSEQ, NSEQ ,TYPE1
+        KEY, SEQ, TTL, SIZE, PSEQ, NSEQ, TYPE1
     }
 
     private static byte[] NS;
@@ -133,11 +134,10 @@ public class ListNode extends  BaseNode{
     }
 
 
-
     /**
      * 初始化节点值
-     *
-     *  ttl|type|size|prev-next|value
+     * <p>
+     * ttl|type|size|prev-next|value
      *
      * @param val0
      * @param pseq
@@ -174,8 +174,7 @@ public class ListNode extends  BaseNode{
 
 
     /**
-     *
-     *  数据初始化
+     * 数据初始化
      *
      * @param db0
      * @param key0
@@ -186,8 +185,8 @@ public class ListNode extends  BaseNode{
     public ListNode(RocksDB db0, byte[] key0, long seq) throws RedisException {
         this.db = db0;
 
-//        System.out.println(new String(key0));
-//        System.out.println(seq);
+//        log.debug(new String(key0));
+//        log.debug(seq);
 
         ByteBuf keyPreBuf = Unpooled.wrappedBuffer("_l".getBytes(), key0, "#".getBytes());
         ByteBuf keySeqBuf = Unpooled.buffer(8);
@@ -202,15 +201,15 @@ public class ListNode extends  BaseNode{
         try {
             byte[] values = db.get(getKey());
 
-            if(values == null){
-                this.valBuf=null;
+            if (values == null) {
+                this.valBuf = null;
                 return null;
             }
-            this.valBuf= Unpooled.wrappedBuffer(values);
+            this.valBuf = Unpooled.wrappedBuffer(values);
 
         } catch (RocksDBException e) {
             e.printStackTrace();
-            throw new RedisException(String.format("获取数据错误:key%s;%S",getKey0(),e.getStatus()));
+            throw new RedisException(String.format("获取数据错误:key%s;%S", getKey0(), e.getStatus()));
         }
         return this;
     }
@@ -251,11 +250,11 @@ public class ListNode extends  BaseNode{
     }
 
     public ListNode prev() throws RedisException {
-        if(getPseq() == -1){
+        if (getPseq() == -1) {
             return null;
         }
 
-        return create().genKey(getKey0(),getPseq()).get();
+        return create().genKey(getKey0(), getPseq()).get();
     }
 
     public ListNode setPseq(long val) throws RedisException {
@@ -267,6 +266,7 @@ public class ListNode extends  BaseNode{
 
     /**
      * 更改字段值
+     *
      * @param val0
      * @throws RedisException
      */
@@ -274,9 +274,9 @@ public class ListNode extends  BaseNode{
 
         int indexVal = 8 + 4 + 4 + 8 + 8 + 4;
 
-        ByteBuf ttlBuf = this.valBuf.slice(0,indexVal);
+        ByteBuf ttlBuf = this.valBuf.slice(0, indexVal);
         ByteBuf val1Buf = Unpooled.wrappedBuffer(val0);
-        valBuf= Unpooled.wrappedBuffer(ttlBuf, val1Buf);//零拷贝
+        valBuf = Unpooled.wrappedBuffer(ttlBuf, val1Buf);//零拷贝
 
     }
 
@@ -285,11 +285,11 @@ public class ListNode extends  BaseNode{
     }
 
     public ListNode next() throws RedisException {
-        if(getNseq() == -1){
+        if (getNseq() == -1) {
 
             return null;
         }
-        return create().genKey(getKey0(),getNseq()).get();
+        return create().genKey(getKey0(), getNseq()).get();
     }
 
     public ListNode setNseq(long val) throws RedisException {
@@ -308,19 +308,18 @@ public class ListNode extends  BaseNode{
     }
 
     public String getSeq0Str() throws RedisException {
-        return getSeq0()+"";
+        return getSeq0() + "";
     }
 
 
     @Deprecated
     public void setSeq(long pval) throws RedisException {
 
-        seq=pval;
+        seq = pval;
 
         keyBuf.resetReaderIndex();
-        set(SEQ,pval);
+        set(SEQ, pval);
     }
-
 
 
     public byte[] getKey0() {
@@ -330,7 +329,6 @@ public class ListNode extends  BaseNode{
     public String getKey0Str() throws RedisException {
         return new String(getKey0());
     }
-
 
 
     @Deprecated
@@ -349,7 +347,6 @@ public class ListNode extends  BaseNode{
 
 
     /**
-     *
      * 获取指针数据
      *
      * @param fd
@@ -369,7 +366,7 @@ public class ListNode extends  BaseNode{
 
                 ByteBuf bb = keyBuf.slice(preKeySize, keyBuf.readableBytes() - preKeySize);
 
-                result =bb.getLong(0) ;
+                result = bb.getLong(0);
 
                 break;
 
@@ -380,25 +377,26 @@ public class ListNode extends  BaseNode{
 
             case TYPE1:
 
-                result = this.valBuf.getInt(8+1);
+                result = this.valBuf.getInt(8 + 1);
                 break;
 
             case SIZE:
 
-                result = this.valBuf.getInt(8+4+2);
+                result = this.valBuf.getInt(8 + 4 + 2);
                 break;
 
             case PSEQ:
 
-                result = this.valBuf.getLong(8+4+4+3);
+                result = this.valBuf.getLong(8 + 4 + 4 + 3);
                 break;
 
             case NSEQ:
-                result = this.valBuf.getLong(8+4+4+3+8);
+                result = this.valBuf.getLong(8 + 4 + 4 + 3 + 8);
                 break;
 
             default:
-                System.out.println("default");
+//                log.debug("default");
+                log.debug("default");
                 throw new RedisException(String.format("没有如此的字段:%s", fd));
         }
         return result;
@@ -406,6 +404,7 @@ public class ListNode extends  BaseNode{
 
     /**
      * 设置指针数据
+     *
      * @param fd
      * @param pval
      * @return
@@ -429,24 +428,24 @@ public class ListNode extends  BaseNode{
                 break;
 
             case TYPE1:
-                valBuf.setInt(8+1, (int) pval);
+                valBuf.setInt(8 + 1, (int) pval);
                 break;
 
             case SIZE:
-                valBuf.setInt(8+4+2, (int) pval);
+                valBuf.setInt(8 + 4 + 2, (int) pval);
                 break;
 
             case PSEQ:
-                valBuf.setLong(8+4+4+3, pval);
+                valBuf.setLong(8 + 4 + 4 + 3, pval);
                 break;
 
             case NSEQ:
-                valBuf.setLong(8+4+4+3+8, pval);
+                valBuf.setLong(8 + 4 + 4 + 3 + 8, pval);
                 break;
 
 
             default:
-                System.out.println("default");
+                log.debug("default");
                 throw new RedisException(String.format("没有如此的字段:%s", fd));
         }
         return result;
@@ -481,7 +480,6 @@ public class ListNode extends  BaseNode{
     }
 
 
-
     public byte[] getVal0() {
 
 //        print(valBuf);
@@ -498,7 +496,6 @@ public class ListNode extends  BaseNode{
         return new String(getVal0());
 
     }
-
 
 
     /**
@@ -529,47 +526,50 @@ public class ListNode extends  BaseNode{
         sb.append(" , nseq =");
         sb.append(getNseq());
 
-        System.out.println(sb.toString());
+        log.debug(sb.toString());
 
         return sb.toString();
     }
 
 
     public static void main(String[] args) throws Exception {
+        log.debug("****************:");
+        log.debug("main:");
+
 
 //        ListNode meta =  ListNode.getInstance(RocksdbRedis.mydata, "ListTest".getBytes(), 0, "value".getBytes(), -1, -1);
-        ListNode meta =  ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        meta.genKey( "ListTest".getBytes(),0).put("value".getBytes(), -1, -1);
+        ListNode meta = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+        meta.genKey("ListTest".getBytes(), 0).put("value".getBytes(), -1, -1);
 
-        Assert.assertArrayEquals(meta.getKey0(),"ListTest".getBytes());
-        Assert.assertEquals(meta.getSeq(),0);
-        Assert.assertEquals(meta.getSeq0(),0);
+        Assert.assertArrayEquals(meta.getKey0(), "ListTest".getBytes());
+        Assert.assertEquals(meta.getSeq(), 0);
+        Assert.assertEquals(meta.getSeq0(), 0);
 
-        Assert.assertEquals(meta.getTtl(),-1);
-        Assert.assertEquals(meta.getType(),DataType.VAL_LIST_ELEMENT);
-        Assert.assertEquals(meta.getSize(),"value".getBytes().length);
+        Assert.assertEquals(meta.getTtl(), -1);
+        Assert.assertEquals(meta.getType(), DataType.VAL_LIST_ELEMENT);
+        Assert.assertEquals(meta.getSize(), "value".getBytes().length);
 
-        Assert.assertEquals(meta.getNseq(),-1);
-        Assert.assertEquals(meta.getPseq(),-1);
+        Assert.assertEquals(meta.getNseq(), -1);
+        Assert.assertEquals(meta.getPseq(), -1);
 
-        Assert.assertArrayEquals(meta.getVal0(),"value".getBytes());
+        Assert.assertArrayEquals(meta.getVal0(), "value".getBytes());
 
         meta.info();
 
-//        System.out.println(new String(meta.getKey0()));
-//        System.out.println(String.format("seq: %d", meta.getSeq()));
+//        log.debug(new String(meta.getKey0()));
+//        log.debug(String.format("seq: %d", meta.getSeq()));
 
 //        meta.setKey0("abc".getBytes());
-//        System.out.println(new String(meta.getKey0()));
+//        log.debug(new String(meta.getKey0()));
         meta.setSeq(12);
         meta.setNseq(3);
         meta.setPseq(4);
 
-        Assert.assertEquals(meta.getSeq(),12);
-        Assert.assertEquals(meta.getSeq0(),12);
+        Assert.assertEquals(meta.getSeq(), 12);
+        Assert.assertEquals(meta.getSeq0(), 12);
 
-        Assert.assertEquals(meta.getNseq(),3);
-        Assert.assertEquals(meta.getPseq(),4);
+        Assert.assertEquals(meta.getNseq(), 3);
+        Assert.assertEquals(meta.getPseq(), 4);
 
         Assert.assertArrayEquals(meta.getKey0(), "ListTest".getBytes());
 
@@ -578,13 +578,13 @@ public class ListNode extends  BaseNode{
         meta.flush();
 
 
-        ListNode meta1 =  ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+        ListNode meta1 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
 
-        meta1.genKey( "ListTest".getBytes(),12).get();
+        meta1.genKey("ListTest".getBytes(), 12).get();
 
         meta1.info();
 
-        meta1.genKey( "ListTest".getBytes(),0).get();
+        meta1.genKey("ListTest".getBytes(), 0).get();
 
         meta1.info();
 

@@ -2,6 +2,7 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -37,6 +38,9 @@ import static redis.netty4.BulkReply.NIL_REPLY;
  * </p>
  */
 public class HashNode extends BaseNode{
+
+    private static Logger log = Logger.getLogger(HashNode.class);
+
 
     private static byte[] NS;
     private static byte[] TYPE = DataType.KEY_HASH_FIELD;
@@ -413,7 +417,7 @@ public class HashNode extends BaseNode{
         sb.append(" , SIZE =");
         sb.append(getSize());
 
-        System.out.println(sb.toString());
+        log.debug(sb.toString());
 
         return sb.toString();
     }
@@ -425,7 +429,7 @@ public class HashNode extends BaseNode{
         meta.genKey1("HashTest".getBytes(), "f1".getBytes()).hset("value".getBytes());
 
         byte[] val1 = meta.genKey1("HashTest".getBytes(), "f1".getBytes()).hget().getVal0();
-        System.out.println(":::::" + new String(val1));
+        log.debug(":::::" + new String(val1));
         Assert.assertArrayEquals(val1, "value".getBytes());
         meta.info();
 
@@ -453,7 +457,7 @@ public class HashNode extends BaseNode{
         Assert.assertArrayEquals(meta.getVal0(), "v2".getBytes());
 
         byte[] val0 = meta.genKey1("abc".getBytes(), "f2".getBytes()).hget().getVal0();
-        System.out.println(":::::" + new String(val0));
+        log.debug(":::::" + new String(val0));
         Assert.assertArrayEquals(val0, "v2".getBytes());
 
     }

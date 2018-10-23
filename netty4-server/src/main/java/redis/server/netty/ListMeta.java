@@ -2,6 +2,7 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -35,6 +36,9 @@ import static redis.server.netty.RedisBase.notInteger;
  * Created by moyong on 2017/11/9.
  */
 public class ListMeta extends BaseMeta {
+
+    private static Logger log = Logger.getLogger(ListMeta.class);
+
 
     enum Meta {
         COUNT, SSEQ, ESEQ, CSEQ
@@ -137,7 +141,7 @@ public class ListMeta extends BaseMeta {
         val1.writeLong(eseq);    //最后一个元素
         val1.writeLong(cseq);    //最新主键编号
 
-        System.out.println(String.format("count:%d 第一个元素：%d 最后一个元素：%d 自增主键：%d  value:%s", count, sseq, eseq, sseq, new String(val1.readBytes(val1.readableBytes()).array())));
+        log.debug(String.format("count:%d 第一个元素：%d 最后一个元素：%d 自增主键：%d  value:%s", count, sseq, eseq, sseq, new String(val1.readBytes(val1.readableBytes()).array())));
 
 
         val1.resetReaderIndex();
@@ -158,7 +162,7 @@ public class ListMeta extends BaseMeta {
 
         this.metaVal = genMetaVal(count, sseq, eseq, cseq);
 
-        System.out.println(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
+        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
 
         try {
             db.put(getKey(), getVal());
@@ -339,7 +343,7 @@ public class ListMeta extends BaseMeta {
                 break;
 
             default:
-                System.out.println("default");
+                log.debug("default");
                 throw new RedisException(String.format("没有如此的字段:%s", fd));
         }
         return result;
@@ -371,7 +375,7 @@ public class ListMeta extends BaseMeta {
                 break;
 
             default:
-                System.out.println("default");
+                log.debug("default");
                 throw new RedisException(String.format("没有如此的字段:%s", fd));
         }
         return result;
@@ -407,7 +411,7 @@ public class ListMeta extends BaseMeta {
         sb.append("  cseq=");
         sb.append(getCseq());
 
-        System.out.println(sb.toString());
+        log.debug(sb.toString());
 
         return sb.toString();
     }
@@ -913,15 +917,15 @@ public class ListMeta extends BaseMeta {
         long s = RocksdbRedis.__torange(start1, getCount());
         long e = RocksdbRedis.__torange(stop2, getCount());
 
-        System.out.println("ssssss:" + s);
-        System.out.println("eeeeee:" + e);
-        System.out.println("eeeeee:" + getCount());
+        log.debug("ssssss:" + s);
+        log.debug("eeeeee:" + e);
+        log.debug("eeeeee:" + getCount());
 
         ListNode node = getFirstNode();
 
         long cnt = getCount();
         for (int j = 0; j < cnt; j++) {
-            System.out.println(j);
+            log.debug(j);
 
             node.info();
 
@@ -1099,7 +1103,7 @@ public class ListMeta extends BaseMeta {
         Assert.assertEquals(metaRPush.lrange("0".getBytes(), "2".getBytes()).toString(), Arrays.asList(strings3).toString());
 
 
-        System.out.println("========================2 !!!");
+        log.debug("========================2 !!!");
 
         ListNode n3 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
 
@@ -1119,7 +1123,7 @@ public class ListMeta extends BaseMeta {
         Assert.assertEquals(n3.getSize(), 3);
 
         Assert.assertArrayEquals(n3.getVal0(), "ZZZ".getBytes());
-        System.out.println("========================1 !!!");
+        log.debug("========================1 !!!");
 
         ListNode n2 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
         n2.genKey("ListRight".getBytes(), 1).get();
@@ -1130,7 +1134,7 @@ public class ListMeta extends BaseMeta {
         Assert.assertEquals(n2.getSize(), 3);
 
         Assert.assertArrayEquals(n2.getVal0(), "YYY".getBytes());
-        System.out.println("========================0 !!!");
+        log.debug("========================0 !!!");
 
 
 //        ListNode n1 = new ListNode(RocksdbRedis.mydata, "ListRight".getBytes(), 0);
@@ -1175,7 +1179,7 @@ public class ListMeta extends BaseMeta {
         Assert.assertArrayEquals("LPUSH".getBytes(), metaLPush.getKey0());
 
 
-        System.out.println("========================2 !!!");
+        log.debug("========================2 !!!");
 
         ListNode n3 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
         n3.genKey("LPUSH".getBytes(), 2).get();
@@ -1188,7 +1192,7 @@ public class ListMeta extends BaseMeta {
 
         Assert.assertArrayEquals(n3.getVal0(), "ZZZ".getBytes());
 
-        System.out.println("========================1 !!!");
+        log.debug("========================1 !!!");
 
         ListNode n2 = n3.genKey("LPUSH".getBytes(), 1).get();
 
@@ -1198,7 +1202,7 @@ public class ListMeta extends BaseMeta {
         Assert.assertEquals(n2.getSize(), 3);
 
         Assert.assertArrayEquals(n2.getVal0(), "YYY".getBytes());
-        System.out.println("========================0 !!!");
+        log.debug("========================0 !!!");
 
 
 //        ListNode n1 = new ListNode(RocksdbRedis.mydata, "LPUSH".getBytes(), 0);
@@ -1210,7 +1214,7 @@ public class ListMeta extends BaseMeta {
         Assert.assertEquals(n1.getSize(), 3);
         Assert.assertArrayEquals(n1.getVal0(), "XXX".getBytes());
 
-        System.out.println("========================LPOP !!!");
+        log.debug("========================LPOP !!!");
 
         Assert.assertArrayEquals(metaLPush.lpop().data().array(), "333".getBytes());
 
@@ -1221,7 +1225,7 @@ public class ListMeta extends BaseMeta {
 
         Assert.assertEquals(metaLPush.llen().data().intValue(), 5);
 
-        System.out.println("========================1 LINDEX !!!");
+        log.debug("========================1 LINDEX !!!");
 
         Assert.assertArrayEquals(metaLPush.lindex("1".getBytes()).data().array(), "111".getBytes());
 
@@ -1232,7 +1236,7 @@ public class ListMeta extends BaseMeta {
 
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 5);
 
-        System.out.println("========================2 LRANGE !!!");
+        log.debug("========================2 LRANGE !!!");
 
         n3.genKey("LPUSH".getBytes(), 0).get().info();
         n3.genKey("LPUSH".getBytes(), 1).get().info();
@@ -1240,12 +1244,12 @@ public class ListMeta extends BaseMeta {
         n3.genKey("LPUSH".getBytes(), 3).get().info();
         n3.genKey("LPUSH".getBytes(), 4).get().info();
 
-        System.out.println("========================2 LRANGE !!!");
+        log.debug("========================2 LRANGE !!!");
 
         String[] strings = {"222", "Modify", "ZZZ"};
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "2".getBytes()).toString(), Arrays.asList(strings).toString());
 
-//        System.out.println("*********count 111:"+metaLPush.getCount());
+//        log.debug("*********count 111:"+metaLPush.getCount());
         Assert.assertEquals(metaLPush.lrem("1".getBytes(), "Modify".getBytes()).data().intValue(), 1);
 
 
@@ -1254,11 +1258,11 @@ public class ListMeta extends BaseMeta {
 //        n3.genKey("LPUSH".getBytes(), 2).get().info();
 //        n3.genKey("LPUSH".getBytes(), 4).get().info();
 
-//        System.out.println("**********count 222:"+metaLPush.getCount());
+//        log.debug("**********count 222:"+metaLPush.getCount());
 
         Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 4);
 
-        System.out.println("--------------------------- !!!");
+        log.debug("--------------------------- !!!");
 
 
         String[] strings1 = {"222", "ZZZ", "YYY", "XXX"};

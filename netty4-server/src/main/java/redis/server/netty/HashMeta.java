@@ -2,6 +2,7 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -43,6 +44,9 @@ import static redis.util.Encoding.bytesToNum;
  * todo 重构&测试 单个element 的操作方法在node;多个element 操作方法在meta,meta 的操作方法；
  */
 public class HashMeta extends BaseMeta {
+
+    private static Logger log = Logger.getLogger(HashMeta.class);
+
 
     protected static HashNode hashNode;
 
@@ -109,7 +113,7 @@ public class HashMeta extends BaseMeta {
 
         this.metaVal = genMetaVal(count);
 
-        System.out.println(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
+        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
 
         try {
             db.put(getKey(), getVal());//fixme
@@ -220,7 +224,7 @@ public class HashMeta extends BaseMeta {
         sb.append("  count=");
         sb.append(getCount());
 
-        System.out.println(sb.toString());
+        log.debug(sb.toString());
 
         return sb.toString();
     }
@@ -284,7 +288,7 @@ public class HashMeta extends BaseMeta {
 
             long cnt = countBy(db, keyPartten);
 
-            System.out.println("MetaCountCaller ... cnt:" + cnt);
+            log.debug("MetaCountCaller ... cnt:" + cnt);
 
 
             try {
@@ -368,7 +372,7 @@ public class HashMeta extends BaseMeta {
         }
 
         //检索过期数据,处理过期数据 ;暂不处理影响效率 fixme
-//        System.out.println(keys.size());
+//        log.debug(keys.size());
 
         return cnt;
     }
@@ -396,7 +400,7 @@ public class HashMeta extends BaseMeta {
                     if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
 
                         keys.add(iterator.key());
-//                        System.out.println(new String(iterator.key()));
+//                        log.debug(new String(iterator.key()));
 //                        if (keys.size() >= 100000) {
 //                            //数据大于1万条直接退出
 //                            break;
@@ -410,7 +414,7 @@ public class HashMeta extends BaseMeta {
         }
 
         //检索过期数据,处理过期数据 ;暂不处理影响效率 fixme
-//        System.out.println(keys.size());
+//        log.debug(keys.size());
 
         return keys;
     }
@@ -466,7 +470,7 @@ public class HashMeta extends BaseMeta {
         }
 
         //检索过期数据,处理过期数据 ;暂不处理影响效率 fixme
-//        System.out.println(keys.size());
+//        log.debug(keys.size());
 
         return keys;
     }
@@ -673,19 +677,19 @@ public class HashMeta extends BaseMeta {
         HashMeta meta9 = HashMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
         //测试删除
         meta9.genMetaKey("HashUpdate".getBytes()).deleteRange(meta9.getKey0());
-//        System.out.println("hkeys0:"+meta9.hkeys());
+//        log.debug("hkeys0:"+meta9.hkeys());
 
 
-//        System.out.println(meta9.hget("f1".getBytes()));
+//        log.debug(meta9.hget("f1".getBytes()));
         Assert.assertNull(meta9.hget("f1".getBytes()).asUTF8String());
 
         meta9.genMetaKey("HashUpdate".getBytes()).hset("f1".getBytes(), "v1".getBytes());
-//        System.out.println(meta9.hget("f1".getBytes()));
+//        log.debug(meta9.hget("f1".getBytes()));
         Assert.assertEquals("v1", meta9.hget("f1".getBytes()).asUTF8String());
 
         Thread.sleep(500);
 
-//        System.out.println("cnt:"+meta9.getCount());
+//        log.debug("cnt:"+meta9.getCount());
         Assert.assertEquals(1, meta9.getMeta().getCount());
 
 
@@ -693,13 +697,13 @@ public class HashMeta extends BaseMeta {
 
         Thread.sleep(500);
 
-//        System.out.println("val:"+meta9.getVal0());
+//        log.debug("val:"+meta9.getVal0());
         Assert.assertEquals(2, meta9.getMeta().getCount());
 
-//        System.out.println("hkeys9:"+meta9.hkeys());
-//        System.out.println("hvals:"+meta9.hvals());
-//        System.out.println("hgetall:"+meta9.hgetall());
-//        System.out.println("hmget:"+meta9.hmget("f1".getBytes(),"f2".getBytes()));
+//        log.debug("hkeys9:"+meta9.hkeys());
+//        log.debug("hvals:"+meta9.hvals());
+//        log.debug("hgetall:"+meta9.hgetall());
+//        log.debug("hmget:"+meta9.hmget("f1".getBytes(),"f2".getBytes()));
 
 
         //引入
@@ -720,16 +724,16 @@ public class HashMeta extends BaseMeta {
         byte[] v3 = "v3".getBytes();
         byte[] v4 = "v4".getBytes();
 
-//        System.out.println("hkeys0:"+meta2.genMetaKey("BATCH".getBytes()).hkeys());
-//        System.out.println("hkeys1:"+meta2.hkeys());
-//        System.out.println("hlens1:"+meta2.hlen().data().longValue());
+//        log.debug("hkeys0:"+meta2.genMetaKey("BATCH".getBytes()).hkeys());
+//        log.debug("hkeys1:"+meta2.hkeys());
+//        log.debug("hlens1:"+meta2.hlen().data().longValue());
 
         meta2.genMetaKey("BATCH".getBytes()).hset1(f1, v1).hset1(f2, v2);
 
         Thread.sleep(500);
 
-//        System.out.println("hkeys2:"+meta2.hkeys());
-//        System.out.println("hlens2:"+meta2.hlen().data().longValue());
+//        log.debug("hkeys2:"+meta2.hkeys());
+//        log.debug("hlens2:"+meta2.hlen().data().longValue());
 
         Assert.assertArrayEquals(meta2.hget(f1).data().array(), v1);
         Assert.assertArrayEquals(meta2.hget(f2).data().array(), v2);
@@ -759,7 +763,7 @@ public class HashMeta extends BaseMeta {
 
         Assert.assertEquals(meta2.hvals().toString(), Arrays.asList(strings5).toString());
 
-        System.out.println("Over ... ...");
+        log.debug("Over ... ...");
 
     }
 

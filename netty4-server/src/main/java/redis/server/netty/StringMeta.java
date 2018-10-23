@@ -2,6 +2,7 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -51,7 +52,8 @@ import static redis.util.Encoding.numToBytes;
  */
 public class StringMeta {
 
-//    private static final org.slf4j.Logger log = LoggerFactory.getLogger(StringMeta.class);
+    private static Logger log = Logger.getLogger(StringMeta.class);
+
 
     ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
 
@@ -243,7 +245,7 @@ public class StringMeta {
         sb.append("  str:");
         sb.append(getVal0Str());
 
-        System.out.println(sb.toString());
+        log.debug(sb.toString());
 
         return sb.toString();
     }
@@ -542,7 +544,7 @@ public class StringMeta {
         //处理 field key
         for (int i = 0; i < field_or_value1.length; i += 2) {
             field_or_value1[i] = genMetaKey(field_or_value1[i]).getKey();
-//            System.out.println(new String(field_or_value1[i]));
+//            log.debug(new String(field_or_value1[i]));
         }
 
         __mput(field_or_value1);
@@ -645,7 +647,7 @@ public class StringMeta {
         long incr = bytesToNum(increment2);
         BulkReply field = get(key0);
 
-//        System.out.println("val:"+field.asAsciiString());
+//        log.debug("val:"+field.asAsciiString());
 
 
         if (field.data() == null) {
@@ -778,12 +780,12 @@ public class StringMeta {
         //测试创建
         metaString.set("key".getBytes(), "value".getBytes(), null);
 
-        System.out.println(metaString.get("key".getBytes()).asUTF8String());
+        log.debug(metaString.get("key".getBytes()).asUTF8String());
 
         Assert.assertArrayEquals("value".getBytes(), metaString.get("key".getBytes()).data().array());
         Assert.assertEquals("value".length(), metaString.strlen("key".getBytes()).data().intValue());
 
-        System.out.println(metaString.getKey0Str());
+        log.debug(metaString.getKey0Str());
 
         Assert.assertArrayEquals("key".getBytes(), metaString.getKey0());
 
@@ -821,7 +823,7 @@ public class StringMeta {
 
         metaString.info();
 
-        System.out.println("done ......");
+        log.debug("done ......");
 
     }
 

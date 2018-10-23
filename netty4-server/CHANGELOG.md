@@ -1,5 +1,14 @@
+### 2018-10-14
+    List 数据类型 
+    val编码 = ttl|type|count|第一个元素|最后一个元素|当前元素编码
+    
+### 2018-10-12
+    完成hashmeta and hashnode 代码重构，并且通过测试。
+    完成 hashmeta stringmeta 线程安全优化，并且通过测试。
+    
+
 ### 2018-10-09 
-    val编码 = ttl|type|size|value
+    Hash:val编码 = ttl|type|size|value
     meta 与 element value 都采用上述规则 
 
 ### 2018-09-24
