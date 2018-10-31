@@ -187,21 +187,6 @@ public class SetMeta extends BaseMeta {
     }
 
 
-    @Deprecated
-    public long incrCount() throws RedisException {
-        long pval = Math.incrementExact(getCount());
-        setCount(pval);
-        return pval;
-    }
-
-    //删除元素可用
-    @Deprecated
-    public long decrCount() throws RedisException {
-        long pval = Math.decrementExact(getCount());
-        setCount(pval);
-        return pval;
-    }
-
     /**
      * TTL 过期数据处理
      *
@@ -225,94 +210,6 @@ public class SetMeta extends BaseMeta {
         return sb.toString();
     }
 
-
-    /**
-     * <p>
-     * Sadd 命令将一个或多个成员元素加入到集合中，已经存在于集合的成员元素将被忽略。(可以覆盖，不进行核对，减少交互次数)
-     *
-     * 假如集合 key 不存在，则创建一个只包含添加的元素作成员的集合。
-     *
-     * 当集合 key 不是集合类型时，返回一个错误。
-     * </p>
-     *
-     * @param key0
-     * @param member1
-     * @return
-     * @throws RedisException
-     */
-//    public IntegerReply hset(byte[][] member1) throws RedisException {
-////        BytesKeySet set = _getset(key0, true);
-////        int total = 0;
-////        for (byte[] bytes : member1) {
-////            if (set.add(bytes)) total++;
-////        }
-////        return integer(total);
-//        return null;
-//    }
-
-    @Deprecated
-    public IntegerReply hset(byte[] field1, byte[] value2) throws RedisException {
-        hset1(field1, value2);
-
-        return integer(1);
-    }
-
-//    /**
-//     * 如果字段是哈希表中的一个新建字段，并且值设置成功，返回 1 。 如果哈希表中域字段已经存在且旧值已被新值覆盖，返回 0 。
-//     * meta 的计数，推送到任务队列进行异步处理。meta 数据有元素个数和TTL 数据。 todo 提升性能，减少交换次数。 先异步线程实现，再改为异步队列；
-//     *
-//     * @param field1
-//     * @param value2
-//     * @return
-//     * @throws RedisException
-//     */
-//    public IntegerReply sadd(byte[] field1, byte[] value2) throws RedisException {
-//        hset1(field1, value2);
-//
-//        return integer(1);
-//    }
-
-
-    @Deprecated
-    private SetMeta hset1(byte[] field1, byte[] value2) throws RedisException {
-        //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
-
-        if (type != -1 && type != DataType.KEY_HASH) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
-
-        //数据持久化
-        setNode.genKey1(getKey0(), field1).sadd(value2);
-
-        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换； setMeta(hlen().data());
-
-        MetaCountCaller taskCnt = new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_HASH_FIELD));
-        singleThreadExecutor.execute(taskCnt);
-
-        return this;
-    }
-
-    private SetMeta _sadd(byte[] value2) throws RedisException {
-        //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
-
-        if (type != -1 && type != DataType.KEY_SET) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
-
-        //数据持久化
-        setNode.genKey1(getKey0(), value2).sadd(value2);
-
-        //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换； setMeta(hlen().data());
-
-        MetaCountCaller taskCnt = new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_HASH_FIELD));
-        singleThreadExecutor.execute(taskCnt);
-
-        return this;
-    }
 
 
 
@@ -354,30 +251,6 @@ public class SetMeta extends BaseMeta {
     }
 
 
-    @Deprecated
-    public BulkReply hget(byte[] field1) throws RedisException {
-        SetNode node = setNode.genKey1(getKey0(), field1).hget();
-
-        if (node == null || node.data() == null) {
-            return NIL_REPLY;
-        } else {
-            return new BulkReply(node.getVal0());
-        }
-    }
-
-    @Deprecated
-    public IntegerReply hdel(byte[]... field1) throws RedisException {
-
-        for (byte[] hkey : field1) {
-            setNode.genKey1(getKey0(), hkey).hdel();
-        }
-
-        //todo 重新计数；增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
-
-        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_HASH_FIELD)));
-
-        return integer(field1.length);
-    }
 
     /**
      * 构建子元素扫描key
@@ -562,62 +435,7 @@ public class SetMeta extends BaseMeta {
         return keys;
     }
 
-    /**
-     * 返回 key-value 直对形式
-     *
-     * @param data
-     * @param pattern0
-     * @return
-     * @throws RedisException
-     */
-    @Deprecated
-    protected static List<byte[]> keyVals(RocksDB data, byte[] pattern0) throws RedisException {
 
-        //按 key 检索所有数据
-        List<byte[]> keys = new ArrayList<>();
-        try (final RocksIterator iterator = data.newIterator()) {
-            for (iterator.seek(pattern0); iterator.isValid(); iterator.next()) {
-
-                //确保检索有数据，hkeybuf.slice 不错误
-                if (pattern0.length <= iterator.key().length) {
-                    ByteBuf hkeybuf = Unpooled.wrappedBuffer(iterator.key()); //优化 零拷贝
-                    ByteBuf slice = hkeybuf.slice(0, pattern0.length); //获取指定前缀长度的 byte[]
-
-                    slice.resetReaderIndex();
-
-                    //key有序 不相等后面无数据
-                    if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
-
-//                        byte[] value = __getValue(data, iterator.key(), iterator.value());
-//                        setNode newnode = new setNode(RocksdbRedis.mydata, getKey0(), field1);
-
-
-//                        if (value != null) {
-                        keys.add(iterator.key());
-                        keys.add(iterator.value());
-
-//                        }
-
-//                        if (keys.size() >= 100000) {
-//                            //数据大于1万条直接退出  fixme
-//                            break;
-//                        }
-                    } else {
-                        break;
-                    }
-                } else break;
-
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        //检索过期数据,处理过期数据 ;暂不处理影响效率 fixme
-//        log.debug(keys.size());
-
-        return keys;
-    }
 
 
     /**
@@ -876,7 +694,7 @@ public class SetMeta extends BaseMeta {
      * Redis Sismember 命令判断成员元素是否是集合的成员。
      * 如果成员元素是集合的成员，返回 1 。 如果成员元素不是集合的成员，或 key 不存在，返回 0 。
      *
-     * @param key0
+     *
      * @param member1
      * @return
      * @throws RedisException
@@ -891,7 +709,7 @@ public class SetMeta extends BaseMeta {
     /**
      * Redis Smembers 命令返回集合中的所有的成员。 不存在的集合 key 被视为空集合。
      *
-     * @param key0
+     *
      * @return
      * @throws RedisException
      */
@@ -975,7 +793,7 @@ public class SetMeta extends BaseMeta {
      *
      * 被移除的随机元素。 当集合不存在或是空集时，返回 nil 。
      *
-     * @param key0
+     *
      * @return
      * @throws RedisException
      */
@@ -1019,7 +837,6 @@ public class SetMeta extends BaseMeta {
      * 只提供集合 key 参数时，返回一个元素；如果集合为空，返回 nil 。 如果提供了 count 参数，那么返回一个数组；如果集合为空，返回空数组。
      *
      *
-     * @param key0
      * @param count1
      * @return
      * @throws RedisException
@@ -1066,7 +883,7 @@ public class SetMeta extends BaseMeta {
      *
      * 被成功移除的元素的数量，不包括被忽略的元素。
      *
-     * @param key0
+     *
      * @param member1
      * @return
      * @throws RedisException
@@ -1151,176 +968,7 @@ public class SetMeta extends BaseMeta {
     }
 
 
-    /**
-     *
-     * @return
-     * @throws RedisException
-     */
-    @Deprecated
-    public IntegerReply hlen() throws RedisException {
-        Long cnt = countBy(db, genKeyPartten(DataType.KEY_HASH_FIELD));
-        return integer(cnt);
-    }
 
-
-    @Deprecated
-    public MultiBulkReply hkeys() throws RedisException {
-
-        List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
-
-
-        List<byte[]> keys = keys(db, genKeyPartten(DataType.KEY_SET_MEMBER));
-
-        for (byte[] k : keys
-        ) {
-
-            byte[] f = setNode.parseMember(getKey0(), k);
-
-            replies.add(new BulkReply(f));
-
-        }
-
-        return new MultiBulkReply(replies.toArray(new Reply[replies.size()]));
-    }
-
-
-    @Deprecated
-    public IntegerReply hexists(byte[] field1) throws RedisException {
-
-        boolean exists = setNode.genKey1(getKey0(), field1).exists();
-
-        return exists ? integer(1) : integer(0);
-    }
-
-    @Deprecated
-    public MultiBulkReply hvals() throws RedisException {
-
-
-        //检索所有的 hash field key  所有的 key 都是有序的
-        List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
-
-
-        List<byte[]> keyVals = keyVals(db, genKeyPartten(DataType.KEY_HASH_FIELD));//顺序读取 ;field 过期逻辑复杂，暂不处理
-
-
-        int i = 0;
-//        byte[] curKey = new byte[0];
-        for (byte[] bt : keyVals
-        ) {
-            if (i % 2 == 0) {  //key 处理
-//                curKey = bt;
-//                ByteBuf hkeybuf1 = Unpooled.wrappedBuffer(bt); //优化 零拷贝
-
-//                ByteBuf slice = hkeybuf1.slice(3 + key.length, bt.length - 3 - key.length);
-//
-//                replies.add(new BulkReply(slice.readBytes(slice.readableBytes()).array()));
-            } else {
-//                replies.add(new BulkReply(bt));
-                replies.add(new BulkReply(setNode.parseValue0(bt)));
-
-            }
-            i++;
-        }
-
-        return new MultiBulkReply(replies.toArray(new Reply[replies.size()]));
-
-    }
-
-    @Deprecated
-    public MultiBulkReply hgetall() throws RedisException {
-
-        List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
-
-        List<byte[]> keyVals = keyVals(db, genKeyPartten(DataType.KEY_HASH_FIELD));//顺序读取 ;field 过期逻辑复杂，暂不处理
-
-
-        int i = 0;
-        byte[] curKey = new byte[0];
-        for (byte[] bt : keyVals
-        ) {
-            if (i % 2 == 0) {  //key 处理
-                curKey = bt;
-
-                byte[] f = setNode.parseMember(getKey0(), bt);
-
-                //ByteBuf hkeybuf1 = Unpooled.wrappedBuffer(bt); //优化 零拷贝
-                //ByteBuf slice = hkeybuf1.slice(3+NS.length + getKey0().length+TYPE.length, bt.length - 3 -NS.length - getKey0().length -TYPE.length);
-                //byte[] f = slice.readBytes(slice.readableBytes()).array();
-
-                replies.add(new BulkReply(f));
-            } else {
-
-                replies.add(new BulkReply(setNode.parseValue0(bt)));
-            }
-            i++;
-        }
-
-        return new MultiBulkReply(replies.toArray(new Reply[replies.size()]));
-    }
-
-
-    @Deprecated
-    public IntegerReply hincrby(byte[] field1, byte[] increment2) throws RedisException {
-        long incr = bytesToNum(increment2);
-
-        BulkReply field = hget(field1);
-
-        if (field.data() == null) {
-            hset(field1, increment2);
-            return new IntegerReply(incr);
-        } else {
-            String fld = field.asAsciiString();
-            long value = Long.parseLong(fld);
-
-            value = value + incr;
-
-            hset(field1, (value + "").getBytes());
-
-            return new IntegerReply(value);
-        }
-
-    }
-
-    @Deprecated
-    public BulkReply hincrbyfloat(byte[] field1, byte[] increment2) throws RedisException {
-
-        double incr = parseDouble(new String(increment2));
-        BulkReply field = hget(field1);
-
-
-        if (field.data() == null) {
-            hset(field1, increment2);
-            return new BulkReply(increment2);
-        } else {
-            double value = parseDouble(new String(field.data().array()));
-
-            value = value + incr;
-
-            byte[] bytes = String.valueOf(value).getBytes();
-
-            hset(field1, bytes);
-
-            return new BulkReply(bytes);
-        }
-    }
-
-
-    @Deprecated
-    public MultiBulkReply hmget(byte[]... field1) throws RedisException {
-
-
-        List<byte[]> listFds = new ArrayList<byte[]>();
-
-        for (byte[] fd : field1
-        ) {
-            listFds.add(setNode.genKey1(getKey0(), fd).getKey());
-        }
-
-        List<BulkReply> list = setNode.hmget(listFds);
-
-        return new MultiBulkReply(list.toArray(new BulkReply[list.size()]));
-
-    }
 
 
     /**

@@ -3,20 +3,14 @@ package redis.server.netty;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
-import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
-import redis.netty4.BulkReply;
 import redis.server.netty.utis.DataType;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
 
-import static redis.netty4.BulkReply.NIL_REPLY;
+import java.util.Random;
 
 
 /**
@@ -152,35 +146,7 @@ public class SetNode extends BaseNode{
         return valBuf.readBytes(valBuf.readableBytes()).array();
     }
 
-    /**
-     * 参见setVal0 long+int 数据长度，拆分ttl,获取到实际的数据；
-     * val 一般是包含ttl 的数据；val0是实际的业务数据
-     *
-     * @return
-     * @throws RedisException
-     */
-    @Deprecated
-    public byte[] getVal0() throws RedisException {
-        valBuf.resetReaderIndex();
-        ByteBuf valueBuf = valBuf.slice(8 + 4 + 4 + 3, valBuf.readableBytes() - 8 - 4 - 4 - 3);
-        //数据过期处理
-        if (getTtl() < now() && getTtl() != -1) {
-            try {
-                db.delete(getKey());
-                valBuf = null;
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-                throw new RedisException(e.getMessage());
-            }
-            return null;
-        }
-        return valueBuf.readBytes(valueBuf.readableBytes()).array();
-    }
 
-    @Deprecated
-    public String getVal0Str() throws RedisException {
-        return new String(getVal0());
-    }
 
 
     public SetNode setVal(long ttl) throws RedisException {
@@ -203,83 +169,8 @@ public class SetNode extends BaseNode{
         return this;
     }
 
-    @Deprecated
-    public SetNode setVal(byte[] val0, long ttl) throws RedisException {
-
-        ByteBuf ttlBuf = Unpooled.buffer(28);
-
-        ttlBuf.writeLong(ttl); //ttl 无限期 -1
-        ttlBuf.writeBytes(DataType.SPLIT);
-
-        ttlBuf.writeInt(DataType.VAL_HASH_FIELD); //value type
-        ttlBuf.writeBytes(DataType.SPLIT);
-
-        ttlBuf.writeInt(val0.length); //value size
-        ttlBuf.writeBytes(DataType.SPLIT);
-
-        ByteBuf val0Buf = Unpooled.wrappedBuffer(val0);
-        valBuf = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
-
-        return this;
-    }
-
-    @Deprecated
-    public byte[] parseValue0(byte[] values) throws RedisException {
-
-        if (values != null) {
-
-            ByteBuf vvBuf = Unpooled.wrappedBuffer(values);
-            vvBuf.resetReaderIndex();
-
-            ByteBuf valueBuf = vvBuf.slice(8 + 4 + 4 + 3, values.length - 8 - 4 - 4 - 3);
-
-            return valueBuf.readBytes(valueBuf.readableBytes()).array();
-
-        } else return null;
-
-    }
 
 
-    /**
-     * 分解 Value,获取业务数据
-     *
-     * @param db
-     * @param key0
-     * @param values
-     * @return
-     * @throws RedisException
-     */
-    @Deprecated
-    protected static byte[] parseValue(RocksDB db, byte[] key0, byte[] values) throws RedisException {
-        if (values != null) {
-
-            ByteBuf vvBuf = Unpooled.wrappedBuffer(values);
-            vvBuf.resetReaderIndex();
-            ByteBuf ttlBuf = vvBuf.readSlice(8);
-            ByteBuf typeBuf = vvBuf.slice(8 + 1, 4);
-            ByteBuf sizeBuf = vvBuf.slice(8 + 4 + 2, 4);
-
-            ByteBuf valueBuf = vvBuf.slice(8 + 4 + 4 + 3, values.length - 8 - 4 - 4 - 3);
-
-            long ttl = ttlBuf.readLong();//ttl
-            long size = sizeBuf.readInt();//长度数据
-
-            //数据过期处理 todo 暂不元素过期处理，简化逻辑
-//            if (ttl < now() && ttl != -1) {
-//                try {
-//                    db.del(key0);
-////                    valueBuf = null;
-//                } catch (RocksDBException e) {
-//                    e.printStackTrace();
-//                    throw new RedisException(e.getMessage());
-//                }
-//                return null;
-//            }
-
-            return valueBuf.readBytes(valueBuf.readableBytes()).array();
-
-        } else return null; //数据不存在 ？ 测试验证
-    }
 
 
     /**
@@ -309,10 +200,6 @@ public class SetNode extends BaseNode{
     }
 
 
-    @Override
-    public int hashCode() {
-        return super.hashCode();
-    }
 
     /**
      * redis hash元素不支持ttl
@@ -332,76 +219,6 @@ public class SetNode extends BaseNode{
 
     }
 
-    @Deprecated
-    protected void sadd(byte[] val0) throws RedisException {
-
-        setVal(val0, -1);
-
-        try {
-            db.put(getKey(), getVal());
-        } catch (RocksDBException e) {
-            throw new RedisException(e.getMessage());
-        }
-
-    }
-
-    public SetNode spop() throws RedisException {
-
-        Random random = new Random();
-        System.out.println(random.nextInt(41) + 10);//随机生成[10, 50]之间的随机数。
-
-//
-//        try {
-//
-//
-//            byte[] values = db.get(getKey());
-//
-//            if (values == null) {
-//                valBuf = null;
-//                return null;
-//            }
-//
-//            valBuf = Unpooled.wrappedBuffer(values);
-//            valBuf.resetReaderIndex();
-//
-//            return this;
-//
-//        } catch (RocksDBException e) {
-//            e.printStackTrace();
-//            throw new RedisException(e.getMessage());
-//        }
-        return null;
-    }
-
-
-    @Deprecated
-    public SetNode hget() throws RedisException {
-        try {
-
-            byte[] values = db.get(getKey());
-
-            if (values == null) {
-                valBuf = null;
-                return null;
-            }
-
-            valBuf = Unpooled.wrappedBuffer(values);
-            valBuf.resetReaderIndex();
-
-            //数据过期处理 fixme 元素不支持过期，可否作为磁盘缓存增强功能特色；
-//            if (getTtl() < now() && getTtl() != -1) {
-//                db.del(getKey());
-//                valBuf = null;
-//                return null;
-//            }
-
-            return this;
-
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-    }
 
 
     public SetNode srem() throws RedisException {
@@ -420,19 +237,6 @@ public class SetNode extends BaseNode{
         }
     }
 
-    public SetNode hdel() throws RedisException {
-        try {
-
-            db.delete(getKey());//todo 没有元素，清空meta
-            valBuf = null;
-            keyBuf = null;
-            return this;
-
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-    }
 
 
     /**
@@ -465,25 +269,6 @@ public class SetNode extends BaseNode{
     }
 
 
-    protected List<BulkReply> hmget(List<byte[]> listFds) throws RedisException {
-        List<BulkReply> list = new ArrayList<BulkReply>();
-
-        try {
-            Map<byte[], byte[]> fvals = db.multiGet(listFds);
-            for (byte[] fk : listFds
-            ) {
-                byte[] val = parseValue0(fvals.get(fk));
-                if (val != null) {
-                    list.add(new BulkReply(val));
-                } else list.add(NIL_REPLY);
-
-            }
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e.getMessage());
-        }
-        return list;
-    }
 
     /**
      *
@@ -548,38 +333,6 @@ public class SetNode extends BaseNode{
         exists=meta.genKey1("SetTest".getBytes(), "f1".getBytes()).exists();
         System.out.println(exists);
 
-
-//        byte[] val1 = meta.genKey1("SetTest".getBytes(), "f1".getBytes()).hget().getVal0();
-//        log.debug(":::::" + new String(val1));
-//        Assert.assertArrayEquals(val1, "value".getBytes());
-//        meta.info();
-//
-//        Assert.assertEquals(meta.getSize(), 5);
-//        Assert.assertArrayEquals(meta.getMember0(), "f1".getBytes());
-//        Assert.assertArrayEquals(meta.getKey0(), "HashTest".getBytes());
-//        Assert.assertArrayEquals(meta.getVal0(), "value".getBytes());
-//
-//        meta.setMember0("f2".getBytes());
-//        meta.setVal("v1".getBytes(), -1);
-//
-//        Assert.assertArrayEquals(meta.getMember0(), "f2".getBytes());
-//        Assert.assertArrayEquals(meta.getVal0(), "v1".getBytes());
-//
-//        meta.info();
-//
-//
-//        meta.genKey1("abc".getBytes(), "f2".getBytes()).sadd("v2".getBytes());
-//
-//
-//        meta.info();
-//
-//        Assert.assertArrayEquals(meta.getKey0(), "abc".getBytes());
-//        Assert.assertArrayEquals(meta.getMember0(), "f2".getBytes());
-//        Assert.assertArrayEquals(meta.getVal0(), "v2".getBytes());
-//
-//        byte[] val0 = meta.genKey1("abc".getBytes(), "f2".getBytes()).hget().getVal0();
-//        log.debug(":::::" + new String(val0));
-//        Assert.assertArrayEquals(val0, "v2".getBytes());
 
     }
 
