@@ -31,7 +31,7 @@ import static redis.util.Encoding.numToBytes;
  * <p>
  * 核心指令 __put  __get  __del  __exists
  * keys  按前缀检索
- * hkeys 按前缀检索
+ * members 按前缀检索
  * __hput __inclHMeta Hash 指令
  * __hget
  * __hdel __reduHMeta

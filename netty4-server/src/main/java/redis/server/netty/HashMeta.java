@@ -677,7 +677,7 @@ public class HashMeta extends BaseMeta {
         HashMeta meta9 = HashMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
         //测试删除
         meta9.genMetaKey("HashUpdate".getBytes()).deleteRange(meta9.getKey0());
-//        log.debug("hkeys0:"+meta9.hkeys());
+//        log.debug("hkeys0:"+meta9.members());
 
 
 //        log.debug(meta9.hget("f1".getBytes()));
@@ -700,7 +700,7 @@ public class HashMeta extends BaseMeta {
 //        log.debug("val:"+meta9.getVal0());
         Assert.assertEquals(2, meta9.getMeta().getCount());
 
-//        log.debug("hkeys9:"+meta9.hkeys());
+//        log.debug("hkeys9:"+meta9.members());
 //        log.debug("hvals:"+meta9.hvals());
 //        log.debug("hgetall:"+meta9.hgetall());
 //        log.debug("hmget:"+meta9.hmget("f1".getBytes(),"f2".getBytes()));
@@ -724,15 +724,15 @@ public class HashMeta extends BaseMeta {
         byte[] v3 = "v3".getBytes();
         byte[] v4 = "v4".getBytes();
 
-//        log.debug("hkeys0:"+meta2.genMetaKey("BATCH".getBytes()).hkeys());
-//        log.debug("hkeys1:"+meta2.hkeys());
+//        log.debug("hkeys0:"+meta2.genMetaKey("BATCH".getBytes()).members());
+//        log.debug("hkeys1:"+meta2.members());
 //        log.debug("hlens1:"+meta2.hlen().data().longValue());
 
         meta2.genMetaKey("BATCH".getBytes()).hset1(f1, v1).hset1(f2, v2);
 
         Thread.sleep(500);
 
-//        log.debug("hkeys2:"+meta2.hkeys());
+//        log.debug("hkeys2:"+meta2.members());
 //        log.debug("hlens2:"+meta2.hlen().data().longValue());
 
         Assert.assertArrayEquals(meta2.hget(f1).data().array(), v1);

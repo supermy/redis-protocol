@@ -2,6 +2,7 @@ package redis.server.netty;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.apache.log4j.Logger;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import redis.server.netty.utis.DataType;
@@ -14,6 +15,7 @@ import java.util.concurrent.Executors;
  *
  */
 public class BaseMeta {
+    private static Logger log = Logger.getLogger(BaseMeta.class);
 
     /**
      * 异步线程处理元素数据计数；冗余元素数据清理。
@@ -66,11 +68,15 @@ public class BaseMeta {
      */
     protected void deleteRange(byte[] key0) throws RedisException {
 
+
+
         ByteBuf byteBufBegin = Unpooled.wrappedBuffer(NS, DataType.SPLIT, key0, DataType.SPLIT);
         ByteBuf byteBufEnd = Unpooled.wrappedBuffer(NS, DataType.SPLIT, key0, DataType.SPLIT, "z".getBytes());
 
         byte[] begin = byteBufBegin.readBytes(byteBufBegin.readableBytes()).array();
         byte[] end = byteBufEnd.readBytes(byteBufEnd.readableBytes()).array();
+
+        log.debug(String.format("begin %s -> end %s", new String(begin),new String(end)));
 
         try {
             db.deleteRange(begin, end);

@@ -19,7 +19,7 @@ import static redis.server.netty.ListNode.Meta.*;
  * <p>
  * <p>
  * Created by moyong on 2017/11/9.
- * Update by moyong on 2018/10/14。
+ * Update by moyong on 2018/10/22。
  */
 public class ListNode extends BaseNode {
 

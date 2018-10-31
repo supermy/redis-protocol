@@ -34,6 +34,7 @@ import static redis.server.netty.RedisBase.notInteger;
  *
  * <p>
  * Created by moyong on 2017/11/9.
+ * Update by moyong on 2018/10/22
  */
 public class ListMeta extends BaseMeta {
 
