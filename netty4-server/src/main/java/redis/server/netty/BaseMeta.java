@@ -87,6 +87,25 @@ public class BaseMeta {
     }
 
 
+    protected void deleteRange(byte[] key0,byte[] type,byte[] start,byte[] stop) throws RedisException {
+
+        ByteBuf byteBufBegin = Unpooled.wrappedBuffer(NS, DataType.SPLIT, key0, DataType.SPLIT,type,DataType.SPLIT,start);
+        ByteBuf byteBufEnd = Unpooled.wrappedBuffer(NS, DataType.SPLIT, key0, DataType.SPLIT,type,DataType.SPLIT,stop);
+
+        byte[] begin = byteBufBegin.readBytes(byteBufBegin.readableBytes()).array();
+        byte[] end = byteBufEnd.readBytes(byteBufEnd.readableBytes()).array();
+
+        log.debug(String.format("begin %s -> end %s", new String(begin),new String(end)));
+
+        try {
+            db.deleteRange(begin, end);
+        } catch (RocksDBException e) {
+            e.printStackTrace();
+            throw new RedisException(e.getMessage());
+        }
+    }
+
+
     /**
      * 打印调试
      * @param buf

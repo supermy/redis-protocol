@@ -44,6 +44,15 @@ public class BulkReply implements Reply<ByteBuf> {
     return bytes;
   }
 
+  public byte[] dataByte() {
+    bytes.resetReaderIndex();
+    return bytes.readBytes(bytes.readableBytes()).array();
+  }
+
+  public boolean isEmpty(){
+    return bytes == null;
+  }
+
   public String asAsciiString() {
     if (bytes == null) return null;
     return bytes.toString(Charsets.US_ASCII);

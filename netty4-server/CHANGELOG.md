@@ -1,5 +1,12 @@
+### 2018-11-5
+    Redis ZSet 数据类型支撑完成，代码需优化重构；
+    
+### 2018-11-01
+    Redis ZSet 数据类型的支撑；
+
 ### 2018-10-31
     完成Set 数据类型的支持，测试完成。
+    QList 不支持 LINSERT命令可采用原生的RocksDb 效率更高 todo
 
 ### 2018-10-28
     数据监控 0-9 a-z A-Z 数据统计图表；todo
@@ -58,20 +65,22 @@
     MetaObject TTL+TYPE+Value-size+Value
     
     数据类型        Key                                 Value
+    
     String      [<ns>] <key> KEY_META                 KEY_STRING <MetaObject>
+    
     Hash        [<ns>] <key> KEY_META                 KEY_HASH <MetaObject>
                 [<ns>] <key> KEY_HASH_FIELD <field>   KEY_HASH_FIELD <field-value>
+                
     Set         [<ns>] <key> KEY_META                 KEY_SET <MetaObject>
                 [<ns>] <key> KEY_SET_MEMBER <member>  KEY_SET_MEMBER
+                
     List        [<ns>] <key> KEY_META                 KEY_LIST <MetaObject>
                 [<ns>] <key> KEY_LIST_ELEMENT <index> KEY_LIST_ELEMENT <element-value>
+                
     Sorted Set  [<ns>] <key> KEY_META                 KEY_ZSET <MetaObject>
                 [<ns>] <key> KEY_ZSET_SCORE <member>  KEY_ZSET_SCORE <score>
                 [<ns>] <key> KEY_ZSET_SORT <score> <member> KEY_ZSET_SORT
                 
     TTL 数据独立现成处理，扫描这个key，过期则取出key 删除。
     KEY_TTL_SORT [TTL_DB] "" KEY_TTL_SORT（具体为ttl+key,）             value为空
-                
     
-   
- 

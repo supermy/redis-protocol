@@ -642,7 +642,7 @@ public class StringMeta {
 
 
     public IntegerReply incrby(byte[] key0, byte[] increment2) throws RedisException {
-//        genKey1(key0);
+//        genKey(key0);
 
         long incr = bytesToNum(increment2);
         BulkReply field = get(key0);
@@ -670,7 +670,7 @@ public class StringMeta {
     }
 
     public IntegerReply decr(byte[] key0) throws RedisException {
-//        genKey1(key0);
+//        genKey(key0);
 
         return incrby(key0, "-1".getBytes());
     }

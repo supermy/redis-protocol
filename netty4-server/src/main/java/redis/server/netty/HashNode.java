@@ -34,7 +34,7 @@ import static redis.netty4.BulkReply.NIL_REPLY;
  * <p>
  * Created by moyong on 2017/11/23.
  * Updated by moyong on 2018/09/24
- * sadd hget
+ * zadd hget
  * </p>
  */
 public class HashNode extends BaseNode{

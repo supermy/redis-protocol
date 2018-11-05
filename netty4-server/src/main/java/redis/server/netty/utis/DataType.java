@@ -24,7 +24,9 @@ public class DataType {
   public static final int VAL_LIST_ELEMENT = 58;
   public static final int KEY_ZSET = 11;
   public static final byte[] KEY_ZSET_SCORE = "9".getBytes();
+  public static final int VAL_ZSET_SCORE = 59;
   public static final byte[] KEY_ZSET_SORT = "10".getBytes();
+  public static final int VAL_ZSET_SORT = 60;
 
   public static final int DEFAULT_NS = 0;
 
