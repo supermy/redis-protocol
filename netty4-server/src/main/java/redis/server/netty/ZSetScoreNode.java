@@ -196,6 +196,14 @@ public class ZSetScoreNode extends BaseNode{
         return valueBuf.readBytes(valueBuf.readableBytes()).array();
     }
 
+
+
+    public byte[] getVal0(ByteBuf valueBuf) throws RedisException {
+        valueBuf.resetReaderIndex();
+        ByteBuf value1Buf = valueBuf.slice(8 + 4 + 4 + 3, valBuf.readableBytes() - 8 - 4 - 4 - 3);
+        return value1Buf.readBytes(value1Buf.readableBytes()).array();
+    }
+
     public String getVal0Str() throws RedisException {
         return new String(getVal0());
     }
@@ -215,17 +223,17 @@ public class ZSetScoreNode extends BaseNode{
     }
 
 
-    protected byte[] parseMember(byte[] metakey0, byte[] value) throws RedisException {
-
-        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //优化 零拷贝
-        //get field0 name
-        int index = NS.length + metakey0.length + TYPE.length + 3;
-        int length = value.length - NS.length - metakey0.length - TYPE.length - 3;
-
-        ByteBuf slice = valueBuf.slice(index, length);//fixme
-
-        return slice.readBytes(slice.readableBytes()).array();
-    }
+//    protected byte[] parseMember(byte[] metakey0, byte[] value) throws RedisException {
+//
+//        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //优化 零拷贝
+//        //get field0 name
+//        int index = NS.length + metakey0.length + TYPE.length + 3;
+//        int length = value.length - NS.length - metakey0.length - TYPE.length - 3;
+//
+//        ByteBuf slice = valueBuf.slice(index, length);//fixme
+//
+//        return slice.readBytes(slice.readableBytes()).array();
+//    }
 
 
     private static long now() {

@@ -5,7 +5,6 @@ import io.netty.buffer.Unpooled;
 import org.rocksdb.*;
 import org.rocksdb.util.SizeUnit;
 import redis.netty4.*;
-import redis.server.netty.utis.DataType;
 import redis.util.*;
 
 import java.lang.reflect.Field;

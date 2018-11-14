@@ -209,18 +209,18 @@ public class ZSetRankNode extends BaseNode{
         return byteBuf.readBytes(byteBuf.readableBytes()).array();
     }
 
-
-    protected byte[] parseMember(byte[] metakey0, byte[] value) throws RedisException {
-
-        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //优化 零拷贝
-        //get field0 name
-        int index = NS.length + metakey0.length + TYPE.length + 3;
-        int length = value.length - NS.length - metakey0.length - TYPE.length - 3;
-
-        ByteBuf slice = valueBuf.slice(index, length);//fixme
-
-        return slice.readBytes(slice.readableBytes()).array();
-    }
+//
+//    protected byte[] parseMember(byte[] metakey0, byte[] value) throws RedisException {
+//
+//        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //优化 零拷贝
+//        //get field0 name
+//        int index = NS.length + metakey0.length + TYPE.length + 3;
+//        int length = value.length - NS.length - metakey0.length - TYPE.length - 3;
+//
+//        ByteBuf slice = valueBuf.slice(index, length);//fixme
+//
+//        return slice.readBytes(slice.readableBytes()).array();
+//    }
 
 
     private static long now() {

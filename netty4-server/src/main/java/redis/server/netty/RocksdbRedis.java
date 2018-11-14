@@ -1,7 +1,5 @@
 package redis.server.netty;
 
-import com.google.common.collect.BiMap;
-import com.google.common.collect.HashBiMap;
 import com.google.gson.JsonObject;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -9,7 +7,6 @@ import org.rocksdb.*;
 import org.rocksdb.util.SizeUnit;
 import redis.netty4.*;
 import redis.util.*;
-import sun.awt.DesktopBrowse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -388,7 +385,7 @@ public class RocksdbRedis extends RedisBase {
      * @throws RedisException
      */
     protected StatusReply __ltrim(byte[] key0, byte[] start1, byte[] stop2) throws RedisException {
-        redis.server.netty.ListMeta meta=null;//fixme
+        ListLinkMeta meta=null;//fixme
 //        redis.server.netty.ListMeta meta=new redis.server.netty.ListMeta(mydata,key0,false);
 //
 //        long count = getListMeta(key0, COUNT); // FIXME: 2017/11/9  三次访问
@@ -2843,7 +2840,7 @@ public class RocksdbRedis extends RedisBase {
 
 
 
-    protected static RocksDB mydata = getDb("netty4-server/db/data");
+    public static RocksDB mydata = getDb("netty4-server/db/data");
     protected static RocksDB mymeta = getDb("netty4-server/db/meta");
     protected static RocksDB myexpires = getDb("netty4-server/db/expires");
 

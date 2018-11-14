@@ -1,14 +1,21 @@
 package redis.server.netty;
 
+import com.google.common.base.Throwables;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import org.rocksdb.RocksIterator;
 import redis.server.netty.utis.DataType;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import static redis.util.Encoding.bytesToNum;
 
 /**
  * redis 元数据类型的基类
@@ -106,6 +113,9 @@ public class BaseMeta {
     }
 
 
+
+
+
     /**
      * 打印调试
      * @param buf
@@ -114,5 +124,86 @@ public class BaseMeta {
         buf.resetReaderIndex();
         System.out.println(new String(buf.readBytes(buf.readableBytes()).array()));
     }
+
+    /**
+     *
+     * 从缓存中拆分score and member
+     *
+     * @param scoremember
+     * @return
+     */
+    protected static ScoreMember splitScoreMember(ByteBuf scoremember) {
+
+        //2.拆解数据，获取分数；
+//        log.debug(scoremember.capacity());
+//        log.debug(new String(toByteArray(scoremember)));
+
+        scoremember.resetReaderIndex();
+        int splitIndex = scoremember.bytesBefore("|".getBytes()[0]);
+
+        if (splitIndex>0) {
+
+            ByteBuf scoreBuf = scoremember.slice(0, splitIndex);
+            ByteBuf memberBuf = scoremember.slice(splitIndex+1 , scoremember.capacity() - splitIndex-1);
+
+            return new ScoreMember(scoremember,scoreBuf,memberBuf);
+
+        } else{
+
+            return new ScoreMember(null,null,scoremember);
+        }
+
+    }
+
+    protected static class ScoreMember {
+
+        ScoreMember(ByteBuf scoreMemberBuf, ByteBuf scoreBuf, ByteBuf memberBuf) {
+            scoreMemberBuf = scoreMemberBuf;
+            scoreBuf = scoreBuf;
+            memberBuf = memberBuf;
+
+            if (scoreMemberBuf != null) {
+                scoreMember = toByteArray(scoreMemberBuf);
+                log.debug(new String(scoreMember));
+            }
+            if (scoreBuf != null) {
+                score = toByteArray(scoreBuf);
+                scoreNum = bytesToNum(score);
+                log.debug(new String(score));
+            }
+            if (memberBuf != null) {
+                member = toByteArray(memberBuf);
+                log.debug(new String(member));
+            }
+
+        }
+
+        ByteBuf scoreMemberBuf;
+        ByteBuf scoreBuf;
+        ByteBuf memberBuf;
+
+        byte[] scoreMember;
+        byte[] score;
+        byte[] member;
+
+        long scoreNum;
+
+
+    }
+
+    protected static byte[] toByteArray(ByteBuf scoremember) {
+        scoremember.resetReaderIndex();
+        return scoremember.readBytes(scoremember.readableBytes()).array();
+    }
+
+    protected static String toString(ByteBuf scoremember) {
+        return new String(toByteArray(scoremember));
+    }
+
+    protected static String toString(byte[] scoremember) {
+        return new String(scoremember);
+    }
+
+
 
 }

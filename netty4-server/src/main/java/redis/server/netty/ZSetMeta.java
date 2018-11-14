@@ -14,6 +14,7 @@ import redis.server.netty.utis.DataType;
 
 import java.nio.charset.Charset;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
@@ -27,9 +28,9 @@ import static redis.util.Encoding.numToBytes;
 /**
  * Set Meta 元素方便促常用操作
  * <p>
- *     Sorted Set  [<ns>] <key> KEY_META                 KEY_ZSET <MetaObject>
- *                 [<ns>] <key> KEY_ZSET_SCORE <member>  KEY_ZSET_SCORE <score>
- *                 [<ns>] <key> KEY_ZSET_SORT <score> <member> KEY_ZSET_SORT
+ * Sorted Set  [<ns>] <key> KEY_META                 KEY_ZSET <MetaObject>
+ * [<ns>] <key> KEY_ZSET_SCORE <member>  KEY_ZSET_SCORE <score>
+ * [<ns>] <key> KEY_ZSET_SORT <score> <member> KEY_ZSET_SORT
  * </p>
  *
  * <p>
@@ -42,7 +43,6 @@ import static redis.util.Encoding.numToBytes;
  * Created by moyong on 2018/11/01.
  * Update by moyong on 2018/11/01
  * </p>
- *
  */
 public class ZSetMeta extends BaseMeta {
 
@@ -93,6 +93,7 @@ public class ZSetMeta extends BaseMeta {
     /**
      * 保存元素数量
      * 保存score 范围 1,20
+     *
      * @param count
      * @return
      */
@@ -154,8 +155,6 @@ public class ZSetMeta extends BaseMeta {
 
         return this;
     }
-
-
 
 
     public long getVal0() throws RedisException {
@@ -224,8 +223,6 @@ public class ZSetMeta extends BaseMeta {
     }
 
 
-
-
     /**
      * 异步进行hash计数
      */
@@ -262,7 +259,6 @@ public class ZSetMeta extends BaseMeta {
 
         }
     }
-
 
 
     /**
@@ -322,7 +318,7 @@ public class ZSetMeta extends BaseMeta {
      * @param pattern0
      * @return
      */
-    protected static List<ByteBuf> zgetBy(RocksDB db, byte[] pattern0, long start,long stop,boolean delete) throws RedisException {
+    protected static List<ByteBuf> zgetBy(RocksDB db, byte[] pattern0, long start, long stop, boolean delete) throws RedisException {
         //按 key 检索所有数据
         List<ByteBuf> keys = new ArrayList<ByteBuf>();
         try (final RocksIterator iterator = db.newIterator()) {
@@ -340,25 +336,24 @@ public class ZSetMeta extends BaseMeta {
                     if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
 
                         //获取指定索引的数据
-                        if (start <= index && stop >= index){
+                        if (start <= index && stop >= index) {
 
                             hkeybuf.resetReaderIndex();
-                            ByteBuf member = hkeybuf.slice(pattern0.length, iterator.key().length-pattern0.length); //获取指定前缀长度的 byte[]
+                            ByteBuf member = hkeybuf.slice(pattern0.length, iterator.key().length - pattern0.length); //获取指定前缀长度的 byte[]
                             keys.add(member);
 
-//                            log.debug(toString(member));
 
+                            //delete score and sort data node;
                             ScoreMember sm = splitScoreMember(member);
 
-                            if (delete){
+                            if (delete) {
+                                //delete score|member
                                 db.delete(iterator.key());
 
+                                //delete member
                                 ByteBuf patternBuf = Unpooled.wrappedBuffer(pattern0); //优化 零拷贝
-                                ByteBuf baseBuf = hkeybuf.slice(0, pattern0.length-DataType.KEY_ZSET_SORT.length-1); //获取指定前缀长度的 byte[]
-                                ByteBuf memberBuf = Unpooled.wrappedBuffer(toByteArray(baseBuf),DataType.KEY_ZSET_SCORE,DataType.SPLIT,sm.member); //优化 零拷贝
-//                                    log.debug(toString(pattern0));
-//                                    log.debug(toString(baseBuf));
-//                                    log.debug(toString(sm.member));
+                                ByteBuf baseBuf = hkeybuf.slice(0, pattern0.length - DataType.KEY_ZSET_SORT.length - 1); //获取指定前缀长度的 byte[]
+                                ByteBuf memberBuf = Unpooled.wrappedBuffer(toByteArray(baseBuf), DataType.KEY_ZSET_SCORE, DataType.SPLIT, sm.member); //优化 零拷贝
                                 log.debug(toString(memberBuf));
                                 memberBuf.resetReaderIndex();
                                 db.delete(toByteArray(memberBuf));
@@ -376,7 +371,7 @@ public class ZSetMeta extends BaseMeta {
             }
         } catch (RocksDBException e) {
             e.printStackTrace();
-            Throwables.propagateIfPossible(e,RedisException.class);
+            Throwables.propagateIfPossible(e, RedisException.class);
         }
 
         return keys;
@@ -384,9 +379,6 @@ public class ZSetMeta extends BaseMeta {
 
     /**
      * 按分数提取数据
-     *
-     * todo 删除可以考虑db.deleterange
-     *
      *
      * @param db
      * @param pattern0
@@ -397,11 +389,14 @@ public class ZSetMeta extends BaseMeta {
      * @return
      * @throws RedisException
      */
-    protected static List<ScoreMember> zgetBy(RocksDB db, byte[] pattern0,  Score min,Score max, boolean reverse, boolean delete) throws RedisException {
+    protected static List<ScoreMember> zgetBy(RocksDB db, byte[] pattern0, Score min, Score max,
+                                              long offset, long num,
+                                              boolean reverse, boolean delete) throws RedisException {
         //按 key 检索所有数据
         List<ScoreMember> keys = new ArrayList<ScoreMember>();
 
         try (final RocksIterator iterator = db.newIterator()) {
+            long cur = 0;
             for (iterator.seek(pattern0); iterator.isValid(); iterator.next()) {
 
                 //确保检索有数据，hkeybuf.slice 不错误
@@ -414,49 +409,179 @@ public class ZSetMeta extends BaseMeta {
                     //key有序 不相等后面无数据
                     if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
 
+
                         //1.获取数据
                         hkeybuf.resetReaderIndex();
-                        ByteBuf scoremember = hkeybuf.slice(pattern0.length, iterator.key().length-pattern0.length); //获取指定前缀长度的 byte[]
+                        ByteBuf scoremember = hkeybuf.slice(pattern0.length, iterator.key().length - pattern0.length); //获取指定前缀长度的 byte[]
 
 
                         //2.拆解数据，获取分数；
-                        ScoreMember sm =splitScoreMember(scoremember);
+                        ScoreMember sm = splitScoreMember(scoremember);
 
-//                        log.debug(sm.scoreNum);
 
                         //3.符合分数范围，提取数据；
                         //获取指定索引的数据
                         //fixme 优化考虑使用antlr
-                        if(!min.inclusive && min.value==sm.scoreNum){
+                        if (!min.inclusive && min.value == sm.scoreNum) {
                             continue;
                         }
 
-                        if(!max.inclusive && max.value==sm.scoreNum){
+                        if (!max.inclusive && max.value == sm.scoreNum) {
                             continue;
                         }
 
-                        if (min.inclusive && max.inclusive){
-                            if (min.value <= sm.scoreNum && max.value >= sm.scoreNum){
-//                                keys.add(scoremember);
+                        if (min.value <= sm.scoreNum && max.value >= sm.scoreNum) {
+                            if (cur >= offset && cur < offset + num) {//分页 LIMIT offset count
                                 keys.add(sm);
+                            }
 
-                                if (delete){
-                                    db.delete(iterator.key());
+                            //可以获取List 进行逐个删除 要删除两种记录  member是不连续的，智能逐个删除；
+                            if (delete) {
+                                //socre|member
+                                db.delete(iterator.key());
 
-                                    ByteBuf patternBuf = Unpooled.wrappedBuffer(pattern0); //优化 零拷贝
-                                    ByteBuf baseBuf = hkeybuf.slice(0, pattern0.length-DataType.KEY_ZSET_SORT.length-1); //获取指定前缀长度的 byte[]
-                                    ByteBuf memberBuf = Unpooled.wrappedBuffer(toByteArray(baseBuf),DataType.KEY_ZSET_SCORE,DataType.SPLIT,sm.member); //优化 零拷贝
-//                                    log.debug(toString(pattern0));
-//                                    log.debug(toString(baseBuf));
-//                                    log.debug(toString(sm.member));
-                                    log.debug(toString(memberBuf));
-                                    memberBuf.resetReaderIndex();
-                                    db.delete(toByteArray(memberBuf));
-                                }
+
+                                //member
+                                ByteBuf patternBuf = Unpooled.wrappedBuffer(pattern0); //优化 零拷贝
+                                ByteBuf baseBuf = hkeybuf.slice(0, pattern0.length - DataType.KEY_ZSET_SORT.length - 1); //获取指定前缀长度的 byte[]
+                                ByteBuf memberBuf = Unpooled.wrappedBuffer(toByteArray(baseBuf), DataType.KEY_ZSET_SCORE, DataType.SPLIT, sm.member); //优化 零拷贝
+                                log.debug(toString(memberBuf));
+                                memberBuf.resetReaderIndex();
+                                db.delete(toByteArray(memberBuf));
+                            }
+
+                            cur++;
+                        }
+//                        }
+
+
+                    } else {
+                        break;
+                    }
+                } else break;
+
+            }
+        } catch (RocksDBException e) {
+            e.printStackTrace();
+            Throwables.propagateIfPossible(e, RedisException.class);
+        }
+
+        if (reverse) Collections.reverse(keys);
+
+        return keys;
+    }
+
+
+    /**
+     * 按字典提取数据
+     *
+     *
+     * @param db
+     * @param pattern0
+     * @param min
+     * @param max
+     * @param reverse
+     * @param delete
+     * @return
+     * @throws RedisException
+     */
+    protected static List<ScoreMember> zgetBy(RocksDB db, byte[] pattern0, Lex min, Lex max, boolean reverse, boolean delete) throws RedisException {
+        //按 key 检索所有数据
+        List<ScoreMember> keys = new ArrayList<ScoreMember>();
+
+        List<byte[]> dellist = new ArrayList<byte[]>();
+
+        boolean extract = false;
+        try (final RocksIterator iterator = db.newIterator()) {
+            for (iterator.seek(pattern0); iterator.isValid(); iterator.next()) {
+
+                //确保检索有数据，hkeybuf.slice 不错误
+                if (pattern0.length <= iterator.key().length) {
+                    ByteBuf hkeybuf = Unpooled.wrappedBuffer(iterator.key()); //优化 零拷贝
+                    ByteBuf slice = hkeybuf.slice(0, pattern0.length); //获取指定前缀长度的 byte[]
+
+                    slice.resetReaderIndex();
+
+                    //key有序 不相等后面无数据
+                    if (Arrays.equals(toByteArray(slice), pattern0)) {
+
+                        //1.获取数据
+                        hkeybuf.resetReaderIndex();
+                        ByteBuf member = hkeybuf.slice(pattern0.length, iterator.key().length - pattern0.length); //获取指定前缀长度的 byte[]
+
+
+                        ByteBuf minbuf = Unpooled.wrappedBuffer(min.lex); //优化 零拷贝
+                        ByteBuf maxbuf = Unpooled.wrappedBuffer(max.lex); //优化 零拷贝
+
+                        //compareTo() 的返回值是int, 它是先比较对应字符的大小(ASCII码顺序)
+                        //1、如果字符串相等返回值0
+                        //2、如果第一个字符和参数的第一个字符不等,结束比较,返回他们之间的差值（ascii码值）（负值前字符串的值小于后字符串，正值前字符串大于后字符串）
+                        //3、如果第一个字符和参数的第一个字符相等,则以第二个字符和参数的第二个字符做比较,以此类推,直至比较的字符或被比较的字符有一方全比较完,这时就比较字符的长度.
+
+//                        log.debug(new String(min.lex));
+//                        log.debug(new String(max.lex));
+//                        log.debug(new String(toByteArray(member)));
+
+                        member.resetReaderIndex();
+
+                        int imin = minbuf.compareTo(member);
+                        int imax = maxbuf.compareTo(member);
+
+//                        log.debug(imin);
+//                        log.debug(imax);
+
+//                        log.debug(min.inclusive);
+//                        log.debug(max.inclusive);
+
+
+                        //2.1 获取字典开始位置，开始提取数据；
+                        if (imin <= 0) {
+                            log.debug("start....");
+                            extract = true;
+                        }
+
+                        //2.2 获取字典结束位置，结束提取数据；
+                        if (imax < 0) {
+                            log.debug("end....");
+
+                            extract = false;
+                        }
+
+                        //fixme 优化考虑使用antlr
+                        if (imin == 0 && !min.inclusive) {
+                            log.debug("skip min");
+                            continue;
+                        }
+
+                        if (imax == 0 && !max.inclusive) {
+                            log.debug("skip max");
+                            continue;
+                        }
+
+                        //3.提取数据
+                        if (extract) {
+
+                            log.debug("add +++");
+
+
+                            ScoreMember sm = new ScoreMember(null, null, member);
+
+                            keys.add(sm);
+
+                            if (delete) {
+
+
+                                //delete socre|member
+                                byte[] val0score = zsetScoreNode.getVal0(Unpooled.wrappedBuffer(iterator.value()));
+                                ByteBuf baseBuf = hkeybuf.slice(0, pattern0.length - DataType.KEY_ZSET_SCORE.length - 1); //获取指定前缀长度的 byte[]
+                                ByteBuf sortBuf = Unpooled.wrappedBuffer(toByteArray(baseBuf), DataType.KEY_ZSET_SORT,DataType.SPLIT,val0score, DataType.SPLIT, sm.member); //优化 零拷贝
+                                dellist.add(toByteArray(sortBuf));
+
+                                //delete member
+                                db.delete(iterator.key());
 
                             }
                         }
-
 
                     } else {
                         break;
@@ -469,187 +594,31 @@ public class ZSetMeta extends BaseMeta {
             Throwables.propagateIfPossible(e,RedisException.class);
         }
 
-//        @Deprecated
-//        if(delete){ //fixme 可以获取List 进行逐个删除 要删除两种记录  member是不连续的，智能逐个删除；
-//            ByteBuf byteScoreBufBegin = Unpooled.wrappedBuffer(pattern0,min.source);
-//            ByteBuf byteScoreBufEnd = Unpooled.wrappedBuffer(pattern0,max.source);
+//        if (delete) { //fixme 可以获取List 进行逐个删除 sort 或 score 总有一个数据是不连续的。
+//            ByteBuf byteBufBegin = Unpooled.wrappedBuffer(pattern0, min.lex);
+//            ByteBuf byteBufEnd = Unpooled.wrappedBuffer(pattern0, max.lex);
 //
-//            byte[] scoreBegin = toByteArray(byteScoreBufBegin);
-//            byte[] scoreEnd = toByteArray(byteScoreBufEnd);
-//
-//            log.debug(new String(scoreBegin));
-//            log.debug(new String(scoreEnd));
+//            byte[] begin = byteBufBegin.readBytes(byteBufBegin.readableBytes()).array();
+//            byte[] end = byteBufEnd.readBytes(byteBufEnd.readableBytes()).array();
 //
 //            try {
-//                db.deleteRange(begin,end);
+//
+//                //delete member
+//                db.deleteRange(begin, end);
+//
+//                //delete sort=score+member
+//                for (byte[] key : dellist
+//                ) {
+//                    db.delete(key);
+//                }
+//
 //            } catch (RocksDBException throwable) {
 //                throwable.printStackTrace();
 //                Throwables.propagateIfPossible(throwable, RedisException.class);
 //            }
 //
+//
 //        }
-
-        if (reverse) Collections.reverse(keys);
-
-        return keys;
-    }
-
-
-    /**
-     *
-     * 从缓存中拆分score and member
-     *
-     * @param scoremember
-     * @return
-     */
-    private static ScoreMember splitScoreMember(ByteBuf scoremember) {
-
-        //2.拆解数据，获取分数；
-//        log.debug(scoremember.capacity());
-//        log.debug(new String(toByteArray(scoremember)));
-
-        scoremember.resetReaderIndex();
-        int splitIndex = scoremember.bytesBefore("|".getBytes()[0]);
-//        log.debug(splitIndex);
-        ByteBuf scoreBuf = scoremember.slice(0, splitIndex);
-        ByteBuf memberBuf = scoremember.slice(splitIndex+1 , scoremember.capacity() - splitIndex-1);
-
-        return new ScoreMember(scoremember,scoreBuf,memberBuf);
-
-    }
-
-    private static byte[] toByteArray(ByteBuf scoremember) {
-        scoremember.resetReaderIndex();
-        return scoremember.readBytes(scoremember.readableBytes()).array();
-    }
-
-    private static String toString(ByteBuf scoremember) {
-        return new String(toByteArray(scoremember));
-    }
-
-    private static String toString(byte[] scoremember) {
-        return new String(scoremember);
-    }
-
-    /**
-     * 按字典提取数据
-     *
-     * todo 删除可以考虑db.deleterange
-     *
-     *
-     * @param db
-     * @param pattern0
-     * @param min
-     * @param max
-     * @param reverse
-     * @param delete
-     * @return
-     * @throws RedisException
-     */
-    protected static List<ScoreMember> zgetBy(RocksDB db, byte[] pattern0,  Lex min,Lex max, boolean reverse, boolean delete) throws RedisException {
-        //按 key 检索所有数据
-        List<ScoreMember> keys = new ArrayList<ScoreMember>();
-        boolean extract=false;
-        try (final RocksIterator iterator = db.newIterator()) {
-            for (iterator.seek(pattern0); iterator.isValid(); iterator.next()) {
-
-                //确保检索有数据，hkeybuf.slice 不错误
-                if (pattern0.length <= iterator.key().length) {
-                    ByteBuf hkeybuf = Unpooled.wrappedBuffer(iterator.key()); //优化 零拷贝
-                    ByteBuf slice = hkeybuf.slice(0, pattern0.length); //获取指定前缀长度的 byte[]
-
-                    slice.resetReaderIndex();
-
-                    //key有序 不相等后面无数据
-                    if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
-
-                        //1.获取数据
-                        hkeybuf.resetReaderIndex();
-                        ByteBuf member = hkeybuf.slice(pattern0.length, iterator.key().length-pattern0.length); //获取指定前缀长度的 byte[]
-
-
-                        ByteBuf minbuf = Unpooled.wrappedBuffer(min.lex); //优化 零拷贝
-                        ByteBuf maxbuf = Unpooled.wrappedBuffer(max.lex); //优化 零拷贝
-
-                        //compareTo() 的返回值是int, 它是先比较对应字符的大小(ASCII码顺序)
-                        //1、如果字符串相等返回值0
-                        //2、如果第一个字符和参数的第一个字符不等,结束比较,返回他们之间的差值（ascii码值）（负值前字符串的值小于后字符串，正值前字符串大于后字符串）
-                        //3、如果第一个字符和参数的第一个字符相等,则以第二个字符和参数的第二个字符做比较,以此类推,直至比较的字符或被比较的字符有一方全比较完,这时就比较字符的长度.
-
-                        log.debug(new String(min.lex));
-                        log.debug(new String(max.lex));
-                        log.debug(new String(toByteArray(member)));
-
-                        member.resetReaderIndex();
-
-                        int imin= minbuf.compareTo(member);
-                        int imax= maxbuf.compareTo(member);
-
-                        log.debug(imin);
-                        log.debug(imax);
-
-                        log.debug(min.inclusive);
-                        log.debug(max.inclusive);
-
-
-                        //2.1 获取字典开始位置，开始提取数据；
-                        if (imin<=0) {
-                            log.debug("start....");
-                            extract=true;
-                        }
-
-                        //2.2 获取字典结束位置，结束提取数据；
-                        if (imax < 0) {
-                            log.debug("end....");
-
-                            extract=false;
-                        }
-
-                        //fixme 优化考虑使用antlr
-                        if (imin==0 && !min.inclusive){
-                            log.debug("skip min");
-                            continue;
-                        }
-
-                        if (imax==0 && !max.inclusive){
-                            log.debug("skip max");
-                            continue;
-                        }
-
-                        //3.提取数据
-                        if(extract){
-
-                            log.debug("add +++");
-
-
-                            ScoreMember sm = new ScoreMember(null,null,member);
-
-                            keys.add(sm);
-                        }
-
-                    } else {
-                        break;
-                    }
-                } else break;
-
-            }
-        }
-
-        if(delete){ //fixme 可以获取List 进行逐个删除
-            ByteBuf byteBufBegin = Unpooled.wrappedBuffer(pattern0,min.lex);
-            ByteBuf byteBufEnd = Unpooled.wrappedBuffer(pattern0,max.lex);
-
-            byte[] begin = byteBufBegin.readBytes(byteBufBegin.readableBytes()).array();
-            byte[] end = byteBufEnd.readBytes(byteBufEnd.readableBytes()).array();
-
-            try {
-                db.deleteRange(begin,end);
-            } catch (RocksDBException throwable) {
-                throwable.printStackTrace();
-                Throwables.propagateIfPossible(throwable, RedisException.class);
-            }
-
-        }
 
         log.debug(keys.size());
 
@@ -659,7 +628,6 @@ public class ZSetMeta extends BaseMeta {
     }
 
     /**
-     *
      * 返回排名,0-9，a-z,A-Z
      *
      * @param db
@@ -683,11 +651,11 @@ public class ZSetMeta extends BaseMeta {
                     //key有序 不相等后面无数据
                     if (Arrays.equals(toByteArray(slice), pattern0)) {
 
-                        ByteBuf memberBuf = hkeybuf.slice(pattern0.length,iterator.key().length-pattern0.length); //获取指定前缀长度的 byte[]
+                        ByteBuf memberBuf = hkeybuf.slice(pattern0.length, iterator.key().length - pattern0.length); //获取指定前缀长度的 byte[]
                         ScoreMember scoreMember = splitScoreMember(memberBuf);
 
                         //如果包含索引，则返回数据
-                        if(Arrays.equals(member,scoreMember.member)){
+                        if (Arrays.equals(member, scoreMember.member)) {
 
                             return index;
                         }
@@ -705,95 +673,94 @@ public class ZSetMeta extends BaseMeta {
         return -1;
     }
 
-    /**
-     * 获取 member by pattern
-     * 注意pattern 的长度符合截取的要求
-     * @param db
-     * @param pattern0
-     * @return
-     */
-    protected static Set<ByteBuf> members(RocksDB db, byte[] pattern0) {
-        //按 key 检索所有数据
-        Set<ByteBuf> keys = new HashSet<ByteBuf>();
+//    /**
+//     * 获取 member by pattern
+//     * 注意pattern 的长度符合截取的要求
+//     *
+//     * @param db
+//     * @param pattern0
+//     * @return
+//     */
+//    protected static Set<ByteBuf> members(RocksDB db, byte[] pattern0) {
+//        //按 key 检索所有数据
+//        Set<ByteBuf> keys = new HashSet<ByteBuf>();
+//
+//        try (final RocksIterator iterator = db.newIterator()) {
+//            for (iterator.seek(pattern0); iterator.isValid(); iterator.next()) {
+//
+//                //确保检索有数据，hkeybuf.slice 不错误
+//                if (pattern0.length <= iterator.key().length) {
+//                    ByteBuf hkeybuf = Unpooled.wrappedBuffer(iterator.key()); //优化 零拷贝
+//                    ByteBuf slice = hkeybuf.slice(0, pattern0.length); //获取指定前缀长度的 byte[]
+//
+//                    slice.resetReaderIndex();
+//
+//                    //key有序 不相等后面无数据
+//                    if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
+//
+//                        hkeybuf.resetReaderIndex();
+//                        ByteBuf member = hkeybuf.slice(pattern0.length, iterator.key().length - pattern0.length); //获取指定前缀长度的 byte[]
+//
+////                        keys.add(member.readBytes(member.readableBytes()).array());
+//                        keys.add(member);
+//
+//                    } else {
+//                        break;
+//                    }
+//                } else break;
+//
+//            }
+//        }
+//
+//        //检索过期数据,处理过期数据 ;暂不处理影响效率 fixme
+////        log.debug(keys.size());
+//
+//        return keys;
+//    }
 
-        try (final RocksIterator iterator = db.newIterator()) {
-            for (iterator.seek(pattern0); iterator.isValid(); iterator.next()) {
-
-                //确保检索有数据，hkeybuf.slice 不错误
-                if (pattern0.length <= iterator.key().length) {
-                    ByteBuf hkeybuf = Unpooled.wrappedBuffer(iterator.key()); //优化 零拷贝
-                    ByteBuf slice = hkeybuf.slice(0, pattern0.length); //获取指定前缀长度的 byte[]
-
-                    slice.resetReaderIndex();
-
-                    //key有序 不相等后面无数据
-                    if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
-
-                        hkeybuf.resetReaderIndex();
-                        ByteBuf member = hkeybuf.slice(pattern0.length, iterator.key().length-pattern0.length); //获取指定前缀长度的 byte[]
-
-//                        keys.add(member.readBytes(member.readableBytes()).array());
-                        keys.add(member);
-
-                    } else {
-                        break;
-                    }
-                } else break;
-
-            }
-        }
-
-        //检索过期数据,处理过期数据 ;暂不处理影响效率 fixme
-//        log.debug(keys.size());
-
-        return keys;
-    }
-
-
-    /**
-     * 按前缀检索所有的 keys
-     *
-     * @param pattern0
-     * @return
-     */
-    protected static List<byte[]> keys(RocksDB db, byte[] pattern0) {
-        //按 key 检索所有数据
-        List<byte[]> keys = new ArrayList<>();
-
-        try (final RocksIterator iterator = db.newIterator()) {
-            for (iterator.seek(pattern0); iterator.isValid(); iterator.next()) {
-
-                //确保检索有数据，hkeybuf.slice 不错误
-                if (pattern0.length <= iterator.key().length) {
-                    ByteBuf hkeybuf = Unpooled.wrappedBuffer(iterator.key()); //优化 零拷贝
-                    ByteBuf slice = hkeybuf.slice(0, pattern0.length); //获取指定前缀长度的 byte[]
-
-                    slice.resetReaderIndex();
-
-                    //key有序 不相等后面无数据
-                    if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
-
-                        keys.add(iterator.key());
-//                        log.debug(new String(iterator.key()));
-//                        if (keys.size() >= 100000) {
-//                            //数据大于1万条直接退出
-//                            break;
-//                        }
-                    } else {
-                        break;
-                    }
-                } else break;
-
-            }
-        }
-
-        //检索过期数据,处理过期数据 ;暂不处理影响效率 fixme
-//        log.debug(keys.size());
-
-        return keys;
-    }
-
-
+//
+//    /**
+//     * 按前缀检索所有的 keys
+//     *
+//     * @param pattern0
+//     * @return
+//     */
+//    protected static List<byte[]> keys(RocksDB db, byte[] pattern0) {
+//        //按 key 检索所有数据
+//        List<byte[]> keys = new ArrayList<>();
+//
+//        try (final RocksIterator iterator = db.newIterator()) {
+//            for (iterator.seek(pattern0); iterator.isValid(); iterator.next()) {
+//
+//                //确保检索有数据，hkeybuf.slice 不错误
+//                if (pattern0.length <= iterator.key().length) {
+//                    ByteBuf hkeybuf = Unpooled.wrappedBuffer(iterator.key()); //优化 零拷贝
+//                    ByteBuf slice = hkeybuf.slice(0, pattern0.length); //获取指定前缀长度的 byte[]
+//
+//                    slice.resetReaderIndex();
+//
+//                    //key有序 不相等后面无数据
+//                    if (Arrays.equals(slice.readBytes(slice.readableBytes()).array(), pattern0)) {
+//
+//                        keys.add(iterator.key());
+////                        log.debug(new String(iterator.key()));
+////                        if (keys.size() >= 100000) {
+////                            //数据大于1万条直接退出
+////                            break;
+////                        }
+//                    } else {
+//                        break;
+//                    }
+//                } else break;
+//
+//            }
+//        }
+//
+//        //检索过期数据,处理过期数据 ;暂不处理影响效率 fixme
+////        log.debug(keys.size());
+//
+//        return keys;
+//    }
 
 
     /**
@@ -813,9 +780,8 @@ public class ZSetMeta extends BaseMeta {
 
 
     /**
-     *
      * Redis Zcount 命令用于计算有序集合中指定分数区间的成员数量。
-     *
+     * <p>
      * 分数值在 min 和 max 之间的成员的数量。
      *
      * @param min1
@@ -834,17 +800,16 @@ public class ZSetMeta extends BaseMeta {
     }
 
     /**
-     *
      * Redis Zincrby 命令对有序集合中指定成员的分数加上增量 increment
-     *
+     * <p>
      * 可以通过传递一个负数值 increment ，让分数减去相应的值，比如 ZINCRBY key -5 member ，就是让 member 的 score 值减去 5 。
-     *
+     * <p>
      * 当 key 不存在，或分数不是 key 的成员时， ZINCRBY key increment member 等同于 ZADD key increment member 。
-     *
+     * <p>
      * 当 key 不是有序集类型时，返回一个错误。
-     *
+     * <p>
      * 分数值可以是整数值或双精度浮点数。
-     *
+     * <p>
      * member 成员的新分数值，以字符串形式表示。
      *
      * @param increment1
@@ -863,18 +828,18 @@ public class ZSetMeta extends BaseMeta {
         }
 
         BulkReply zscore = zscore(member2);
-        if (zscore.isEmpty()){
+        if (zscore.isEmpty()) {
             //新增
-            zadd(getKey0(),increment1,member2);
+            genMetaKey(getKey0()).zadd(increment1, member2);
             return new BulkReply(increment1);
-        }else{
+        } else {
             //修改分数 注意修改两个数据
             zscore.data();
             long score = bytesToNum(getVal(zscore.data()));
             long incr = bytesToNum(increment1);
-            byte[] dest = numToBytes(score+incr);
+            byte[] dest = numToBytes(score + incr);
             genMetaKey(getKey0()).zrem(member2);
-            genMetaKey(getKey0()).zadd(dest,member2);
+            genMetaKey(getKey0()).zadd(dest, member2);
             return new BulkReply(dest);
         }
 
@@ -882,11 +847,10 @@ public class ZSetMeta extends BaseMeta {
 
 
     /**
-     *
      * Redis Zinterstore 命令计算给定的一个或多个有序集的交集，其中给定 key 的数量必须以 numkeys 参数指定，并将该交集(结果集)储存到 destination 。
-     *
+     * <p>
      * 默认情况下，结果集中某个成员的分数值是所有给定集下该成员分数值之和。
-     *
+     * <p>
      * 返回值：保存到目标结果集的的成员数量。
      *
      * @param destination0
@@ -1006,9 +970,8 @@ public class ZSetMeta extends BaseMeta {
     enum Aggregate {SUM, MIN, MAX}
 
     /**
-     *
      * Redis Zlexcount 命令在计算有序集合中指定字典区间内成员数量。
-     *
+     * <p>
      * 指定区间内的成员数量。
      *
      * @param min1
@@ -1032,7 +995,6 @@ public class ZSetMeta extends BaseMeta {
 
 
     /**
-     *
      * Redis Zscore 命令返回有序集中，成员的分数值。 如果成员元素不是有序集 key 的成员，或 key 不存在，返回 nil 。
      *
      * @param member1
@@ -1043,10 +1005,10 @@ public class ZSetMeta extends BaseMeta {
 
         ZSetScoreNode zscore = zsetScoreNode.genKey(getKey0(), member1).zscore();
 
-        if (zscore.isEmpty()){
+        if (zscore.isEmpty()) {
 
             return NIL_REPLY;
-        }else{
+        } else {
 
             byte[] score = zscore.getVal0();
             return new BulkReply(score);
@@ -1055,11 +1017,10 @@ public class ZSetMeta extends BaseMeta {
 
 
     /**
-     *
      * Redis Zunionstore 命令计算给定的一个或多个有序集的并集，其中给定 key 的数量必须以 numkeys 参数指定，并将该并集(结果集)储存到 destination 。
-     *
+     * <p>
      * 默认情况下，结果集中某个成员的分数值是所有给定集下该成员分数值之和 。
-     *
+     * <p>
      * 保存到 destination 的结果集的成员数量。
      *
      * @param destination0
@@ -1075,10 +1036,8 @@ public class ZSetMeta extends BaseMeta {
 
 
     /**
-     *
      * Redis Zrank 返回有序集中指定成员的排名。其中有序集成员按分数值递增(从小到大)顺序排列。
      * 如果成员是有序集 key 的成员，返回 member 的排名。 如果成员不是有序集 key 的成员，返回 nil 。
-     *
      *
      * @param member1
      * @return
@@ -1087,21 +1046,20 @@ public class ZSetMeta extends BaseMeta {
     public Reply zrank(byte[] member1) throws RedisException {
 
         int sort = zsortBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), member1);
-        if (sort ==-1 ){
+        if (sort == -1) {
             return NIL_REPLY;
-        }else
+        } else
             return integer(sort);
     }
 
 
     /**
-     *
      * Redis Zrevrank 命令返回有序集中成员的排名。其中有序集成员按分数值递减(从大到小)排序。
-     *
+     * <p>
      * 排名以 0 为底，也就是说， 分数值最大的成员排名为 0 。
-     *
+     * <p>
      * 使用 ZRANK 命令可以获得成员按分数值递增(从小到大)排列的排名。
-     *
+     * <p>
      * 如果成员是有序集 key 的成员，返回成员的排名。 如果成员不是有序集 key 的成员，返回 nil 。
      *
      * @param member1
@@ -1111,18 +1069,18 @@ public class ZSetMeta extends BaseMeta {
 
     public Reply zrevrank(byte[] member1) throws RedisException {
         int sort = zsortBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), member1);
-        if (sort ==-1 ){
+        if (sort == -1) {
             return NIL_REPLY;
-        }else
-            return integer(getMeta().getCount()-1-sort);
+        } else
+            return integer(getMeta().getCount() - 1 - sort);
     }
 
     /**
-     *
      * Redis Zrem 命令用于移除有序集中的一个或多个成员，不存在的成员将被忽略。
      * 当 key 存在但不是有序集类型时，返回一个错误。
-     *
+     * <p>
      * 被成功移除的成员的数量，不包括被忽略的成员。
+     *
      * @param member1
      * @return
      * @throws RedisException
@@ -1135,11 +1093,11 @@ public class ZSetMeta extends BaseMeta {
             ZSetScoreNode zscore = zsetScoreNode.genKey(getKey0(), member).zscore();
 //            log.debug(zscore.getKey0());
 
-            byte[] val=zscore.getVal0();
+            byte[] val = zscore.getVal0();
 
-            if (!zscore.isEmpty()){
+            if (!zscore.isEmpty()) {
                 zsetScoreNode.genKey(getKey0(), member).zrem();
-                zsetRankNode.genKey(getKey0(),val,member).zrem();
+                zsetRankNode.genKey(getKey0(), val, member).zrem();
                 rmCnt++;
             }
 
@@ -1153,7 +1111,6 @@ public class ZSetMeta extends BaseMeta {
 
 
     /**
-     *
      * Redis Zrange 返回有序集中，指定区间内的成员。
      * 其中成员的位置按分数值递增(从小到大)来排序。
      * 具有相同分数值的成员按字典序(lexicographical order )来排列。
@@ -1161,7 +1118,7 @@ public class ZSetMeta extends BaseMeta {
      * 值递减(从大到小)来排列，请使用 ZREVRANGE 命令。
      * 下标参数 start 和 stop 都以 0 为底，也就是说，以 0 表示有序集第一个成员，以 1 表示有序集第二个成员，以此类推。
      * 你也可以使用负数下标，以 -1 表示最后一个成员， -2 表示倒数第二个成员，以此类推。
-     *
+     * <p>
      * 指定区间内，带有分数值(可选)的有序集成员的列表。
      *
      * @param start1
@@ -1171,29 +1128,28 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply zrange(byte[] start1, byte[] stop2, byte[] withscores3) throws RedisException {
-        if ( start1 == null || stop2 == null) {
+        if (start1 == null || stop2 == null) {
             throw new RedisException("invalid number of argumenst for 'zrange' command");
         }
 
         long size = getMeta().getCount();
         long start = RocksdbRedis._torange(start1, size);
         long end = RocksdbRedis._torange(stop2, size);
-        int  withscores= _toint(withscores3);
+        int withscores = _toint(withscores3);
 
-        List<ByteBuf> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), start, end,false);
+        List<ByteBuf> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), start, end, false);
 
-        return _setReply(members,withscores>0);
+        return _setReply(members, withscores > 0);
     }
 
 
     /**
-     *
      * Redis Zrevrange 命令返回有序集中，指定区间内的成员。
-     *
+     * <p>
      * 其中成员的位置按分数值递减(从大到小)来排列。
-     *
+     * <p>
      * 具有相同分数值的成员按字典序的逆序(reverse lexicographical order)排列。
-     *
+     * <p>
      * 除了成员按分数值递减的次序排列这一点外， ZREVRANGE 命令的其他方面和 ZRANGE 命令一样。
      *
      * @param start1
@@ -1205,66 +1161,56 @@ public class ZSetMeta extends BaseMeta {
 
     public MultiBulkReply zrevrange(byte[] start1, byte[] stop2, byte[] withscores3) throws RedisException {
 
-        if ( start1 == null || stop2 == null) {
+        if (start1 == null || stop2 == null) {
             throw new RedisException("invalid number of argumenst for 'zrange' command");
         }
 
         long size = getMeta().getCount();
         long start = RocksdbRedis._torange(start1, size);
         long end = RocksdbRedis._torange(stop2, size);
-        int  withscores= _toint(withscores3);
+        int withscores = _toint(withscores3);
 
-        List<ByteBuf> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), start, end,false);
+        List<ByteBuf> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), start, end, false);
 
         Collections.reverse(members);//倒序 排序
 
-        return _setReply(members,withscores>0);
+        return _setReply(members, withscores > 0);
 
     }
 
 
-    private MultiBulkReply _setReply(List<ScoreMember> members,boolean withscores,int offset,int number ) throws RedisException {
+    private MultiBulkReply _setReply(List<ScoreMember> members, boolean withscores, int offset, int number) throws RedisException {
 
         List<Reply<ByteBuf>> list = new ArrayList<Reply<ByteBuf>>();
-        int current=0;
+//        int current=0;
         for (ScoreMember buf : members
         ) {
 
-            if (current >= offset && current < offset + number) {
-//                buf.resetReaderIndex();
-//            int index = buf.forEachByte(ByteBufProcessor.FIND_LF);
-//                int index = buf.bytesBefore(Byte.parseByte("|"));
-//                ByteBuf scoreBuf = buf.slice(0, index);
-//                ByteBuf memberBuf = buf.slice(index + 1, buf.capacity() - 1);
-
-//                list.add(new BulkReply(getVal(memberBuf)));
-                list.add(new BulkReply(buf.member));
-                if (withscores) {
-//                    list.add(new BulkReply(getVal(scoreBuf)));
-                    list.add(new BulkReply(buf.score));
-                }
+//            if (current >= offset && current < offset + number) {
+            list.add(new BulkReply(buf.member));
+            if (withscores) {
+                list.add(new BulkReply(buf.score));
             }
-            current++;
+//            }
+//            current++;
         }
 
         return new MultiBulkReply(list.toArray(new Reply[list.size()]));
     }
 
     /**
-     *
      * 构建返回数据 score + members
      * 删除节点数据 score,sort 两种数据
      *
      * @param members
      * @param withscores
-     * @param delete
      * @return
      * @throws RedisException
      */
-    private MultiBulkReply _setReply(List<ByteBuf> members,boolean withscores) throws RedisException {
+    private MultiBulkReply _setReply(List<ByteBuf> members, boolean withscores) throws RedisException {
 
         List<Reply<ByteBuf>> list = new ArrayList<Reply<ByteBuf>>();
-        int current=0;
+        int current = 0;
         for (ByteBuf buf : members
         ) {
 
@@ -1275,10 +1221,10 @@ public class ZSetMeta extends BaseMeta {
 //                ByteBuf scoreBuf = buf.slice(0, index);
 //                ByteBuf memberBuf = buf.slice(index + 1, buf.capacity() - 1);
 
-                list.add(new BulkReply(scoreMember.member));
-                if (withscores) {
-                    list.add(new BulkReply(scoreMember.score));
-                }
+            list.add(new BulkReply(scoreMember.member));
+            if (withscores) {
+                list.add(new BulkReply(scoreMember.score));
+            }
 
         }
 
@@ -1290,8 +1236,8 @@ public class ZSetMeta extends BaseMeta {
 
         //fixme member 只能逐个删除
 
-            ByteBuf f = members.get(0);
-            ByteBuf l = members.get(members.size()-1);
+        ByteBuf f = members.get(0);
+        ByteBuf l = members.get(members.size() - 1);
 
         ScoreMember first = splitScoreMember(f);
         ScoreMember last = splitScoreMember(l);
@@ -1300,9 +1246,8 @@ public class ZSetMeta extends BaseMeta {
 //            ByteBuf lastMember=getMember(last);
 
 //            deleteRange(getKey0(), DataType.KEY_ZSET_SCORE,first.member, last.member);
-            deleteRange(getKey0(), DataType.KEY_ZSET_SORT,first.score, last.score);//score+member
+        deleteRange(getKey0(), DataType.KEY_ZSET_SORT, first.score, last.score);//score+member
     }
-
 
 
     /**
@@ -1324,9 +1269,9 @@ public class ZSetMeta extends BaseMeta {
 
     /**
      * Redis Zrangebyscore 返回有序集合中指定分数区间的成员列表。有序集成员按分数值递增(从小到大)次序排列。
-     *
+     * <p>
      * 具有相同分数值的成员按字典序来排列(该属性是有序集提供的，不需要额外的计算)。
-     *
+     * <p>
      * 默认情况下，区间的取值使用闭区间 (小于等于或大于等于)，你也可以通过给参数前增加 ( 符号来使用可选的开区间 (小于或大于)。
      *
      * @param min1
@@ -1336,22 +1281,21 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply zrangebyscore(byte[] min1, byte[] max2, byte[]... withscores_offset_or_count4) throws RedisException {
-        return _zrangebyscore(min1,max2,withscores_offset_or_count4,false,false);
+        return _zrangebyscore(min1, max2, withscores_offset_or_count4, false, false);
     }
 
 
     public MultiBulkReply zrangebylex(byte[] min1, byte[] max2, byte[]... offset_or_count4) throws RedisException {
-        return _zrangebylex(min1,max2,offset_or_count4,false,false);
+        return _zrangebylex(min1, max2, offset_or_count4, false, false);
     }
 
     /**
-     *
      * Redis Zrevrangebyscore 返回有序集中指定分数区间内的所有的成员。有序集成员按分数值递减(从大到小)的次序排列。
-     *
+     * <p>
      * 具有相同分数值的成员按字典序的逆序(reverse lexicographical order )排列。
-     *
+     * <p>
      * 除了成员按分数值递减的次序排列这一点外， ZREVRANGEBYSCORE 命令的其他方面和 ZRANGEBYSCORE 命令一样。
-     *
+     * <p>
      * 指定区间内，带有分数值(可选)的有序集成员的列表。
      *
      * @param max1
@@ -1361,14 +1305,13 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply zrevrangebyscore(byte[] max1, byte[] min2, byte[]... withscores_offset_or_count4) throws RedisException {
-        return _zrangebyscore(max1,min2,withscores_offset_or_count4,true,false);
+        return _zrangebyscore(max1, min2, withscores_offset_or_count4, true, false);
     }
 
 
     /**
-     *
      * Redis Zremrangebyscore 命令用于移除有序集中，指定分数（score）区间内的所有成员。
-     *
+     * <p>
      * 被移除成员的数量。
      *
      * @param min1
@@ -1382,9 +1325,8 @@ public class ZSetMeta extends BaseMeta {
     }
 
     /**
-     *
      * Redis Zremrangebylex 命令用于移除有序集合中给定的字典区间的所有成员。
-     *
+     * <p>
      * 被成功移除的成员的数量，不包括被忽略的成员。
      *
      * @param min1
@@ -1403,9 +1345,8 @@ public class ZSetMeta extends BaseMeta {
     }
 
     /**
-     *
      * Redis Zremrangebyrank 命令用于移除有序集中，指定排名(rank)区间内的所有成员。
-     *
+     * <p>
      * 被移除成员的数量。
      *
      * @param start1
@@ -1419,7 +1360,7 @@ public class ZSetMeta extends BaseMeta {
         long start = RocksdbRedis._torange(start1, size);
         long end = RocksdbRedis._torange(stop2, size);
 
-        List<ByteBuf> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), start, end,true);
+        List<ByteBuf> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), start, end, true);
 
         //删除数据
 //        _deleteScoreAndSort(members);
@@ -1429,10 +1370,7 @@ public class ZSetMeta extends BaseMeta {
     }
 
 
-
-
     /**
-     *
      * 按分数区间查询
      *
      * @param min1
@@ -1448,7 +1386,7 @@ public class ZSetMeta extends BaseMeta {
         int offset = 0;
         int number = Integer.MAX_VALUE;
 
-        if(!delete & withscores_offset_or_count4 !=null){ //withscores_offset_or_count4=null 删除数据不进行语法检查
+        if (!delete & withscores_offset_or_count4 != null) { //withscores_offset_or_count4=null 删除数据不进行语法检查
             //fixme antlr 进行语法解析
             int position = 0;
 
@@ -1476,14 +1414,16 @@ public class ZSetMeta extends BaseMeta {
         Score min = _toscorerange(min1);
         Score max = _toscorerange(max2);
 
-        List<ScoreMember> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), min, max, reverse, delete);
+        List<ScoreMember> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), min, max, offset, number, reverse, delete);
 
-        return _setReply(members,withscores,offset,number);
+
+        return _setReply(members, withscores, offset, number);
     }
 
     /**
      * Redis Zrangebylex 通过字典区间返回有序集合的成员。
      * 指定区间内的元素列表。
+     *
      * @param min1
      * @param max2
      * @param offset_or_count4
@@ -1498,7 +1438,7 @@ public class ZSetMeta extends BaseMeta {
         int offset = 0;
         int number = Integer.MAX_VALUE;
 
-        if(!delete){ //offset_or_count4=null 删除数据不进行语法检查
+        if (!delete) { //offset_or_count4=null 删除数据不进行语法检查
             //fixme antlr 进行语法解析
             int position = 0;
 
@@ -1529,7 +1469,7 @@ public class ZSetMeta extends BaseMeta {
 
         List<ScoreMember> members = zgetBy(db, genKeyPartten(DataType.KEY_ZSET_SCORE), min, max, false, false);
 
-        return _setReply(members,false,offset,number);
+        return _setReply(members, false, offset, number);
     }
 
     private boolean _checkcommand(byte[] check, String command, boolean syntax) throws RedisException {
@@ -1552,6 +1492,7 @@ public class ZSetMeta extends BaseMeta {
 
     /**
      * 分数区间指令拆解 min max  todo by ByteBuf
+     *
      * @param specifier
      * @return
      */
@@ -1616,47 +1557,12 @@ public class ZSetMeta extends BaseMeta {
         ByteBuf buf;
     }
 
-    static class ScoreMember {
-
-        ScoreMember(ByteBuf scoreMemberBuf, ByteBuf scoreBuf, ByteBuf memberBuf) {
-            scoreMemberBuf = scoreMemberBuf;
-            scoreBuf = scoreBuf;
-            memberBuf = memberBuf;
-
-            if (scoreMemberBuf != null) {
-                scoreMember = toByteArray(scoreMemberBuf);
-                log.debug(new String(scoreMember));
-            }
-            if (scoreBuf != null) {
-                score = toByteArray(scoreBuf);
-                scoreNum = bytesToNum(score);
-                log.debug(new String(score));
-            }
-            if (memberBuf != null) {
-                member = toByteArray(memberBuf);
-                log.debug(new String(member));
-            }
-
-        }
-
-        ByteBuf scoreMemberBuf;
-        ByteBuf scoreBuf;
-        ByteBuf memberBuf;
-
-        byte[] scoreMember;
-        byte[] score;
-        byte[] member;
-
-        long scoreNum;
-
-
-    }
 
     ////////////////
 
 
     private void debugBytebuf(Set<ByteBuf> set) {
-        StringBuilder sb=new StringBuilder();
+        StringBuilder sb = new StringBuilder();
         for (ByteBuf buf : set
         ) {
             sb.append(new String(buf.readBytes(buf.readableBytes()).array()));
@@ -1666,6 +1572,7 @@ public class ZSetMeta extends BaseMeta {
 
     /**
      * 重置集合中ByteBuf 的指针
+     *
      * @param set
      */
     private void resetBytebuf(Set<ByteBuf> set) {
@@ -1676,20 +1583,15 @@ public class ZSetMeta extends BaseMeta {
     }
 
 
-
-
-
-
     /**
-     *
      * Redis Zadd 命令用于将一个或多个成员元素及其分数值加入到有序集当中。
-     *
+     * <p>
      * 如果某个成员已经是有序集的成员，那么更新这个成员的分数值，并通过重新插入这个成员元素，来保证该成员在正确的位置上。
-     *
+     * <p>
      * 分数值可以是整数值或双精度浮点数。
-     *
+     * <p>
      * 如果有序集合 key 不存在，则创建一个空的有序集并执行 ZADD 操作。
-     *
+     * <p>
      * 当 key 存在但不是有序集类型时，返回一个错误。
      *
      * @param args
@@ -1723,18 +1625,19 @@ public class ZSetMeta extends BaseMeta {
         final WriteBatch batch = new WriteBatch();
 
         int total = 0;
+        //数据从0开始，如果包含key,则从1开始。
         for (int i = 0; i < args.length; i += 2) {
             byte[] member = args[i + 1];
             byte[] score = args[i];
 
-            byte[] scoreKey=zsetScoreNode.genKey(key, member).getKey();
-            byte[] memberKey=zsetRankNode.genKey(key, score, member).getKey();
-            byte[] scoreVal=zsetScoreNode.setVal(score,-1).getVal();
-            byte[] memberVal=zsetRankNode.setVal(-1).getVal();
+            byte[] scoreKey = zsetScoreNode.genKey(key, member).getKey();
+            byte[] memberKey = zsetRankNode.genKey(key, score, member).getKey();
+            byte[] scoreVal = zsetScoreNode.setVal(score, -1).getVal();
+            byte[] memberVal = zsetRankNode.setVal(-1).getVal();
 
             try {
-                batch.put(scoreKey,scoreVal);
-                batch.put(memberKey,memberVal);
+                batch.put(scoreKey, scoreVal);
+                batch.put(memberKey, memberVal);
 
             } catch (Throwable e) {
                 e.printStackTrace();
@@ -1774,41 +1677,55 @@ public class ZSetMeta extends BaseMeta {
     private static void testSet() throws RedisException, InterruptedException {
 //
         log.debug("|".getBytes().length);
+        Random random = new Random();
+        random.ints(6).limit(3).sorted().forEach(System.out::println);
+
+        List<String> strings = Arrays.asList("abc", "", "bc", "efg", "abcd", "", "jkl");
+        long count = strings.parallelStream().filter(string -> string.compareTo("e") > 0).count();
+        strings.stream().filter(string -> string.compareTo("e") > 0).count();
+        log.debug(count);
+        List<Integer> numbers = Arrays.asList(3, 2, 2, 3, 7, 3, 5);
+// 获取对应的平方数
+        List<Integer> squaresList = numbers.stream().map(i -> i * i).distinct().collect(Collectors.toList());
+        Set<Integer> squaresList1 = numbers.stream().map(i -> i * i).collect(Collectors.toSet());
+        log.debug(squaresList);
+        log.debug(squaresList1);
+
         ZSetMeta setMeta = ZSetMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
         setMeta.genMetaKey("ZSet".getBytes()).deleteRange(setMeta.getKey0());
-        Assert.assertEquals(setMeta.zcard().data().intValue(),0);
+        Assert.assertEquals(setMeta.zcard().data().intValue(), 0);
 
         setMeta.genMetaKey("ZSet".getBytes()).
-                       zadd("10".getBytes(),"f1".getBytes(),
-                            "20".getBytes(),"f2".getBytes(),
-                            "30".getBytes(),"f3".getBytes());
+                zadd("10".getBytes(), "f1".getBytes(),
+                        "20".getBytes(), "f2".getBytes(),
+                        "30".getBytes(), "f3".getBytes());
 
-        Assert.assertEquals(setMeta.zcard().data().intValue(),3);
+        Assert.assertEquals(setMeta.zcard().data().intValue(), 3);
 
-        Assert.assertEquals(setMeta.zcount("1".getBytes(),"40".getBytes()).data().intValue(),3);
-        Assert.assertEquals(setMeta.zcount("15".getBytes(),"40".getBytes()).data().intValue(),2);
-        Assert.assertEquals(setMeta.zlexcount("f2".getBytes(),"f3".getBytes()).data().intValue(),2);
+        Assert.assertEquals(setMeta.zcount("1".getBytes(), "40".getBytes()).data().intValue(), 3);
+        Assert.assertEquals(setMeta.zcount("15".getBytes(), "40".getBytes()).data().intValue(), 2);
+        Assert.assertEquals(setMeta.zlexcount("f2".getBytes(), "f3".getBytes()).data().intValue(), 2);
 
-        Assert.assertArrayEquals(setMeta.zscore("f1".getBytes()).dataByte(),"10".getBytes());
+        Assert.assertArrayEquals(setMeta.zscore("f1".getBytes()).dataByte(), "10".getBytes());
 
-        String[] zrangestr = {"f2","20","f3","30"};
-        String[] zrevrangestr = {"f3","30","f2","20"};
-        String[] zrangebylexstr = {"f2","f3"};
+        String[] zrangestr = {"f2", "20", "f3", "30"};
+        String[] zrevrangestr = {"f3", "30", "f2", "20"};
+        String[] zrangebylexstr = {"f2", "f3"};
         //安索引
         MultiBulkReply zrange = setMeta.zrange("1".getBytes(), "2".getBytes(), "1".getBytes());
         //索引倒序
         MultiBulkReply zrevrange = setMeta.zrevrange("1".getBytes(), "2".getBytes(), "1".getBytes());
         //按分数
-        MultiBulkReply zrangebyscore = setMeta.zrangebyscore("19".getBytes(), "31".getBytes(),"WITHSCORES".getBytes());
-        MultiBulkReply zrevrangebyscore = setMeta.zrevrangebyscore("19".getBytes(), "31".getBytes(),"WITHSCORES".getBytes());
+        MultiBulkReply zrangebyscore = setMeta.zrangebyscore("19".getBytes(), "31".getBytes(), "WITHSCORES".getBytes());
+        MultiBulkReply zrevrangebyscore = setMeta.zrevrangebyscore("19".getBytes(), "31".getBytes(), "WITHSCORES".getBytes());
         //按字母
         MultiBulkReply zrangebylex = setMeta.zrangebylex("f2".getBytes(), "f3".getBytes());
 
-        Assert.assertEquals(Arrays.asList(zrangestr).toString(),zrange.asStringList(Charset.defaultCharset()).toString());
-        Assert.assertEquals(Arrays.asList(zrangestr).toString(),zrangebyscore.asStringList(Charset.defaultCharset()).toString());
+        Assert.assertEquals(Arrays.asList(zrangestr).toString(), zrange.asStringList(Charset.defaultCharset()).toString());
+        Assert.assertEquals(Arrays.asList(zrangestr).toString(), zrangebyscore.asStringList(Charset.defaultCharset()).toString());
 //        Assert.assertEquals(Arrays.asList(zrevrangestr).toString(),zrevrangebyscore.asStringList(Charset.defaultCharset()).toString());
-        Assert.assertEquals(Arrays.asList(zrangebylexstr).toString(),zrangebylex.asStringList(Charset.defaultCharset()).toString());
-        Assert.assertEquals(Arrays.asList(zrevrangestr).toString(),zrevrange.asStringList(Charset.defaultCharset()).toString());
+        Assert.assertEquals(Arrays.asList(zrangebylexstr).toString(), zrangebylex.asStringList(Charset.defaultCharset()).toString());
+        Assert.assertEquals(Arrays.asList(zrevrangestr).toString(), zrevrange.asStringList(Charset.defaultCharset()).toString());
 
         log.debug(zrange.asStringList(Charset.defaultCharset()));
         log.debug(zrangebyscore.asStringList(Charset.defaultCharset()));
@@ -1819,32 +1736,31 @@ public class ZSetMeta extends BaseMeta {
 
         IntegerReply zrank = (IntegerReply) setMeta.zrank("f1".getBytes());
         IntegerReply zrevrank = (IntegerReply) setMeta.zrevrank("f1".getBytes());
-        Assert.assertEquals(zrank.data().intValue(),0);
-        Assert.assertEquals(zrevrank.data().intValue(),2);
+        Assert.assertEquals(zrank.data().intValue(), 0);
+        Assert.assertEquals(zrevrank.data().intValue(), 2);
 
-        Assert.assertArrayEquals(setMeta.zincrby("-1".getBytes(),"f1".getBytes()).dataByte(),"9".getBytes());
+        Assert.assertArrayEquals(setMeta.zincrby("-1".getBytes(), "f1".getBytes()).dataByte(), "9".getBytes());
 
 
         setMeta.zrem("f1".getBytes());
         Assert.assertNull(setMeta.zscore("f1".getBytes()).data());
-        setMeta.zadd("10".getBytes(),"f1".getBytes());
+        setMeta.zadd("10".getBytes(), "f1".getBytes());
         Assert.assertNotNull(setMeta.zscore("f1".getBytes()).data());
 
-        log.debug(setMeta.zremrangebyscore("12".getBytes(),"22".getBytes()));
+        log.debug(setMeta.zremrangebyscore("12".getBytes(), "22".getBytes()));
         Assert.assertNull(setMeta.zscore("f2".getBytes()).data());
-        setMeta.zadd("20".getBytes(),"f2".getBytes());
+        setMeta.zadd("20".getBytes(), "f2".getBytes());
         Assert.assertNotNull(setMeta.zscore("f2".getBytes()).data());
 
 
-        log.debug(setMeta.zremrangebyslex("f1".getBytes(),"f2".getBytes()));
+        log.debug(setMeta.zremrangebyslex("f1".getBytes(), "f2".getBytes()));
         Assert.assertNull(setMeta.zscore("f1".getBytes()).data());
 //        Assert.assertNull(setMeta.zscore("f2".getBytes()).data());
-        setMeta.zadd("10".getBytes(),"f1".getBytes(),"20".getBytes(),"f2".getBytes());
+        setMeta.zadd("10".getBytes(), "f1".getBytes(), "20".getBytes(), "f2".getBytes());
 
 
-        log.debug(setMeta.zremrangebyrank("1".getBytes(),"2".getBytes()));
+        log.debug(setMeta.zremrangebyrank("1".getBytes(), "2".getBytes()));
         Assert.assertNull(setMeta.zscore("f3".getBytes()).data());
-
 
 
         log.debug("Over ... ...");
