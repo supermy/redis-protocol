@@ -1,4 +1,4 @@
-package redis.server.netty;
+package redis.server.netty.rocksdb;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -8,8 +8,8 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
+import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
-
 
 
 /**
@@ -32,13 +32,13 @@ import redis.server.netty.utis.DataType;
  * zadd zscore zrank zrem
  * </p>
  */
-public class ZSetScoreNode extends BaseNode{
+public class ZSetRankNode extends BaseNode{
 
-    private static Logger log = Logger.getLogger(ZSetScoreNode.class);
+    private static Logger log = Logger.getLogger(ZSetRankNode.class);
 
 
     private static byte[] NS;
-    private static byte[] TYPE = DataType.KEY_ZSET_SCORE;
+    private static byte[] TYPE = DataType.KEY_ZSET_SORT;
 
     private RocksDB db;
 
@@ -52,14 +52,10 @@ public class ZSetScoreNode extends BaseNode{
         return valBuf;
     }
 
-    public boolean isEmpty() {
-        return valBuf==null || valBuf.capacity()==0;
+    private ZSetRankNode() {
     }
 
-    private ZSetScoreNode() {
-    }
-
-    private static ZSetScoreNode instance = new ZSetScoreNode();
+    private static ZSetRankNode instance = new ZSetRankNode();
 
     /**
      * 使用入口
@@ -71,7 +67,7 @@ public class ZSetScoreNode extends BaseNode{
      * @param ns0
      * @return
      */
-    public static ZSetScoreNode getInstance(RocksDB db0, byte[] ns0) {
+    public static ZSetRankNode getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
         return instance;
@@ -84,7 +80,7 @@ public class ZSetScoreNode extends BaseNode{
      * @return
      * @throws RedisException
      */
-    public ZSetScoreNode genKey(byte[] key0, byte[] member1) throws RedisException {
+    public ZSetRankNode genKey(byte[] key0,byte[] score, byte[] member1) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("主键不能为空"));
         }
@@ -92,7 +88,7 @@ public class ZSetScoreNode extends BaseNode{
         this.key = key0;
         this.member = member1;
 
-        instance.keyBuf = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE, DataType.SPLIT, member1);
+        instance.keyBuf = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT,TYPE, DataType.SPLIT, score, DataType.SPLIT,  member1);
         return instance;
     }
 
@@ -139,9 +135,9 @@ public class ZSetScoreNode extends BaseNode{
 
 
     @Deprecated
-    public void setMember0(byte[] pval) throws RedisException {
+    public void setMember0(byte[] score,byte[] pval) throws RedisException {
         member = pval;
-        keyBuf = Unpooled.wrappedBuffer(NS, DataType.SPLIT, key, DataType.SPLIT, TYPE, DataType.SPLIT, member);
+        keyBuf = Unpooled.wrappedBuffer(NS, DataType.SPLIT, key, DataType.SPLIT, TYPE , DataType.SPLIT, score, DataType.SPLIT, member);
     }
 
 
@@ -151,23 +147,23 @@ public class ZSetScoreNode extends BaseNode{
     }
 
 
-    public ZSetScoreNode setVal(byte[] score,long ttl) throws RedisException {
+    public ZSetRankNode setVal(long ttl) throws RedisException {
 
         ByteBuf ttlBuf = Unpooled.buffer(28);
 
         ttlBuf.writeLong(ttl); //ttl 无限期 -1
         ttlBuf.writeBytes(DataType.SPLIT);
 
-        ttlBuf.writeInt(DataType.VAL_ZSET_SCORE); //value type
-        ttlBuf.writeBytes(DataType.SPLIT);
+        ttlBuf.writeInt(DataType.VAL_ZSET_SORT); //value type
+//        ttlBuf.writeBytes(DataType.SPLIT);
 
-        ttlBuf.writeInt(score.length); //value size
-        ttlBuf.writeBytes(DataType.SPLIT);
+//        ttlBuf.writeInt(score.length); //value size
+//        ttlBuf.writeBytes(DataType.SPLIT);
 
-        ByteBuf val0Buf = Unpooled.wrappedBuffer(score);
+//        ByteBuf val0Buf = Unpooled.wrappedBuffer(score);
 
-        valBuf = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
-
+//        valBuf = Unpooled.wrappedBuffer(ttlBuf, val0Buf);//零拷贝
+        valBuf = ttlBuf;
 
         return this;
     }
@@ -179,34 +175,26 @@ public class ZSetScoreNode extends BaseNode{
      * @return
      * @throws RedisException
      */
-    public byte[] getVal0() throws RedisException {
-        valBuf.resetReaderIndex();
-        ByteBuf valueBuf = valBuf.slice(8 + 4 + 4 + 3, valBuf.readableBytes() - 8 - 4 - 4 - 3);
-        //数据过期处理
-//        if (getTtl() < now() && getTtl() != -1) {
-//            try {
-//                db.delete(getKey());
-//                valBuf = null;
-//            } catch (RocksDBException e) {
-//                e.printStackTrace();
-//                throw new RedisException(e.getMessage());
-//            }
-//            return null;
-//        }
-        return valueBuf.readBytes(valueBuf.readableBytes()).array();
-    }
-
-
-
-    public byte[] getVal0(ByteBuf valueBuf) throws RedisException {
-        valueBuf.resetReaderIndex();
-        ByteBuf value1Buf = valueBuf.slice(8 + 4 + 4 + 3, valBuf.readableBytes() - 8 - 4 - 4 - 3);
-        return value1Buf.readBytes(value1Buf.readableBytes()).array();
-    }
-
-    public String getVal0Str() throws RedisException {
-        return new String(getVal0());
-    }
+//    public byte[] getVal0() throws RedisException {
+//        valBuf.resetReaderIndex();
+//        ByteBuf valueBuf = valBuf.slice(8 + 4 + 4 + 3, valBuf.readableBytes() - 8 - 4 - 4 - 3);
+//        //数据过期处理
+////        if (getTtl() < now() && getTtl() != -1) {
+////            try {
+////                db.delete(getKey());
+////                valBuf = null;
+////            } catch (RocksDBException e) {
+////                e.printStackTrace();
+////                throw new RedisException(e.getMessage());
+////            }
+////            return null;
+////        }
+//        return valueBuf.readBytes(valueBuf.readableBytes()).array();
+//    }
+//
+//    public String getVal0Str() throws RedisException {
+//        return new String(getVal0());
+//    }
 
 
 
@@ -222,7 +210,7 @@ public class ZSetScoreNode extends BaseNode{
         return byteBuf.readBytes(byteBuf.readableBytes()).array();
     }
 
-
+//
 //    protected byte[] parseMember(byte[] metakey0, byte[] value) throws RedisException {
 //
 //        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //优化 零拷贝
@@ -258,9 +246,9 @@ public class ZSetScoreNode extends BaseNode{
      * @param val0
      * @throws RedisException
      */
-    protected void zadd(byte[] score) throws RedisException {
+    protected void zadd() throws RedisException {
 
-        setVal(score,-1);
+        setVal(-1);
 
         try {
             db.put(getKey(), getVal());
@@ -271,18 +259,25 @@ public class ZSetScoreNode extends BaseNode{
     }
 
 
-    public ZSetScoreNode zscore() throws RedisException {
+    /**
+     * 获取排名，排名通过，遍历实现； fixme
+     * @return
+     * @throws RedisException
+     */
+    @Deprecated
+    public ZSetRankNode zrank() throws RedisException {
         try {
 
             byte[] values = db.get(getKey());
 
             if (values == null) {
                 valBuf = null;
-                return this;
+                return null;
             }
 
             valBuf = Unpooled.wrappedBuffer(values);
             valBuf.resetReaderIndex();
+
 
             return this;
 
@@ -293,7 +288,7 @@ public class ZSetScoreNode extends BaseNode{
     }
 
 
-    public ZSetScoreNode zrem() throws RedisException {
+    public ZSetRankNode zrem() throws RedisException {
         try {
 
 //            log.debug(new String(getKey()));
@@ -354,7 +349,7 @@ public class ZSetScoreNode extends BaseNode{
         try {
             for (byte[] member:members
                  ) {
-                byte[] val = setVal("8".getBytes(),-1).getVal();//fixme
+                byte[] val = setVal(-1).getVal();//fixme
 //                log.debug(String.format("key:%s,value:%s", new String(member),new String(val)));
                 batch.put(member, val);
             }
@@ -370,8 +365,8 @@ public class ZSetScoreNode extends BaseNode{
         StringBuilder sb = new StringBuilder(getKey0Str());
         sb.append("|");
         sb.append(getMember0Str());
-        sb.append("=");
-        sb.append(getVal0Str());
+//        sb.append("=");
+//        sb.append(getVal0Str());
 
         sb.append(" , TTL =");
         sb.append(getTtl());
@@ -387,19 +382,20 @@ public class ZSetScoreNode extends BaseNode{
 
     public static void main(String[] args) throws Exception {
 
-        ZSetScoreNode meta = ZSetScoreNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+        ZSetRankNode meta = ZSetRankNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
 
-        meta.genKey("ZSetTest".getBytes(), "f1".getBytes()).zadd("8".getBytes());
-        boolean exists = meta.genKey("ZSetTest".getBytes(), "f1".getBytes()).exists();
+        meta.genKey("ZSetTest".getBytes(),"8".getBytes(), "f1".getBytes()).zadd();
+        boolean exists = meta.genKey("ZSetTest".getBytes(),"8".getBytes(), "f1".getBytes()).exists();
         System.out.println(exists);
         Assert.assertTrue(exists);
-        ZSetScoreNode zscore = meta.genKey("ZSetTest".getBytes(), "f1".getBytes()).zscore();
-        log.debug(new String(zscore.getVal()));
-        log.debug(new String(zscore.getVal0()));
-        Assert.assertArrayEquals(zscore.getVal0(),"8".getBytes());
 
-        meta.genKey("ZSetTest".getBytes(), "f1".getBytes()).zrem();
-        exists=meta.genKey("ZSetTest".getBytes(), "f1".getBytes()).exists();
+//        ZSetRankNode zscore = meta.genKey("ZSetTest".getBytes(),"8".getBytes(), "f1".getBytes()).zrank();
+//        log.debug(new String(zscore.getVal()));
+//        log.debug(new String(zscore.getVal0()));
+//        Assert.assertArrayEquals(zscore.getVal0(),"8".getBytes());
+
+        meta.genKey("ZSetTest".getBytes(),"8".getBytes(), "f1".getBytes()).zrem();
+        exists=meta.genKey("ZSetTest".getBytes(),"8".getBytes(), "f1".getBytes()).exists();
         System.out.println(exists);
         Assert.assertFalse(exists);
 

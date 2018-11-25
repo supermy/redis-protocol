@@ -1,4 +1,4 @@
-package redis.server.netty;
+package redis.server.netty.rocksdb;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -7,6 +7,7 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
+import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
 
 

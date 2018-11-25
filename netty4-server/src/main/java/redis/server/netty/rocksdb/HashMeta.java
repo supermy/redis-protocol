@@ -1,13 +1,13 @@
-package redis.server.netty;
+package redis.server.netty.rocksdb;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
-import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
 import redis.netty4.*;
+import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
 
 import java.util.ArrayList;
@@ -18,7 +18,7 @@ import static java.lang.Double.parseDouble;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
-import static redis.server.netty.RedisBase.invalidValue;
+import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 import static redis.util.Encoding.bytesToNum;
 
 

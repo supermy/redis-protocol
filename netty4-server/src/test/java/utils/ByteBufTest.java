@@ -7,7 +7,6 @@ import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.junit.Test;
-import redis.server.netty.HashMetaTest;
 
 import java.io.InputStreamReader;
 import java.util.Iterator;

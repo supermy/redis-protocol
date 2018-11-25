@@ -1,8 +1,9 @@
-package redis.server.netty;
+package redis.server.netty.rocksdb;
 
 import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.junit.Test;
+import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
 
 

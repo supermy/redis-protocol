@@ -1,4 +1,4 @@
-package redis.server.netty;
+package redis.server.netty.rocksdb;
 
 import io.netty.buffer.ByteBuf;
 import org.rocksdb.*;
@@ -7,6 +7,7 @@ import redis.netty4.BulkReply;
 import redis.netty4.IntegerReply;
 import redis.netty4.MultiBulkReply;
 import redis.netty4.Reply;
+import redis.server.netty.RedisException;
 import redis.util.*;
 
 import java.io.ByteArrayInputStream;

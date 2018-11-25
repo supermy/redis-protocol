@@ -1,14 +1,14 @@
-package redis.server.netty;
+package redis.server.netty.rocksdb;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
-import org.junit.Assert;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
 
-import static redis.server.netty.ListNode.Meta.*;
+import static redis.server.netty.rocksdb.ListLinkNode.Meta.*;
 
 
 /**
@@ -21,9 +21,9 @@ import static redis.server.netty.ListNode.Meta.*;
  * Created by moyong on 2017/11/9.
  * Update by moyong on 2018/10/22。
  */
-public class ListNode extends BaseNode {
+public class ListLinkNode extends BaseNode {
 
-    private static Logger log = Logger.getLogger(ListNode.class);
+    private static Logger log = Logger.getLogger(ListLinkNode.class);
 
 
     public boolean isFirst() throws RedisException {
@@ -53,10 +53,10 @@ public class ListNode extends BaseNode {
         return valBuf;
     }
 
-    private ListNode() {
+    private ListLinkNode() {
     }
 
-    private static ListNode instance = new ListNode();
+    private static ListLinkNode instance = new ListLinkNode();
 
     /**
      * 使用入口
@@ -68,7 +68,7 @@ public class ListNode extends BaseNode {
      * @param ns0
      * @return
      */
-    public static ListNode getInstance(RocksDB db0, byte[] ns0) {
+    public static ListLinkNode getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
         return instance;
@@ -79,8 +79,8 @@ public class ListNode extends BaseNode {
      *
      * @return
      */
-    public ListNode create() {
-        ListNode ins = new ListNode();
+    public ListLinkNode create() {
+        ListLinkNode ins = new ListLinkNode();
         ins.db = db;
         ins.NS = NS;
         return ins;
@@ -93,7 +93,7 @@ public class ListNode extends BaseNode {
      * @return
      * @throws RedisException
      */
-    public ListNode genKey(byte[] key0, long seq1) throws RedisException {
+    public ListLinkNode genKey(byte[] key0, long seq1) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("主键不能为空"));
         }
@@ -115,18 +115,14 @@ public class ListNode extends BaseNode {
      * 持久化节点数据
      *
      * @param val0
-     * @param pseq1 暂时无用
-     * @param nseq2 暂时无用
+     * @param pseq1
+     * @param nseq2
      * @return
      * @throws RedisException
      */
-    public ListNode put(byte[] val0, long pseq1, long nseq2) throws RedisException {
+    public ListLinkNode put(byte[] val0, long pseq1, long nseq2) throws RedisException {
         this.valBuf = setVal(val0, pseq1, nseq2);
         try {
-
-            log.debug(new String(getKey()));
-            log.debug(new String(getVal()));
-
             db.put(getKey(), getVal());
 
         } catch (RocksDBException e) {
@@ -173,23 +169,10 @@ public class ListNode extends BaseNode {
 
         ByteBuf valueBuf = Unpooled.wrappedBuffer(ttlBuf, val1Buf);//零拷贝
 
-//        log.debug(toString(ttlBuf));
-//        log.debug(toString(val1Buf));
-//        log.debug(toString(valueBuf));
-
         return valueBuf;
     }
 
-    public byte[] toArray(ByteBuf buf){
-     return buf.readBytes(buf.readableBytes()).array();
-    }
 
-    public String toString(byte[] byt){
-        return new String(byt);
-    }
-    public String toString(ByteBuf buf){
-        return toString(toArray(buf));
-    }
     /**
      * 数据初始化
      *
@@ -199,7 +182,7 @@ public class ListNode extends BaseNode {
      * @throws RedisException
      */
     @Deprecated
-    public ListNode(RocksDB db0, byte[] key0, long seq) throws RedisException {
+    public ListLinkNode(RocksDB db0, byte[] key0, long seq) throws RedisException {
         this.db = db0;
 
 //        log.debug(new String(key0));
@@ -214,7 +197,7 @@ public class ListNode extends BaseNode {
         get();
     }
 
-    public ListNode get() throws RedisException {
+    public ListLinkNode get() throws RedisException {
         try {
             byte[] values = db.get(getKey());
 
@@ -223,28 +206,6 @@ public class ListNode extends BaseNode {
                 return null;
             }
             this.valBuf = Unpooled.wrappedBuffer(values);
-
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(String.format("获取数据错误:key%s;%S", getKey0(), e.getStatus()));
-        }
-        return this;
-    }
-
-    public ListNode getNode(byte[] key) throws RedisException {
-        try {
-            byte[] values = db.get(key);
-
-//            log.debug(toString(values));
-
-            if (values == null) {
-                this.valBuf = null;
-                return null;
-            }
-            this.valBuf = Unpooled.wrappedBuffer(values);
-            this.keyBuf = Unpooled.wrappedBuffer(key);
-
-            this.key=getKey0();
 
         } catch (RocksDBException e) {
             e.printStackTrace();
@@ -288,7 +249,7 @@ public class ListNode extends BaseNode {
         return get(PSEQ);
     }
 
-    public ListNode prev() throws RedisException {
+    public ListLinkNode prev() throws RedisException {
         if (getPseq() == -1) {
             return null;
         }
@@ -296,7 +257,7 @@ public class ListNode extends BaseNode {
         return create().genKey(getKey0(), getPseq()).get();
     }
 
-    public ListNode setPseq(long val) throws RedisException {
+    public ListLinkNode setPseq(long val) throws RedisException {
         set(PSEQ, val);
         return this;
     }
@@ -309,19 +270,13 @@ public class ListNode extends BaseNode {
      * @param val0
      * @throws RedisException
      */
-    public byte[] setVal(byte[] source0,byte[] updateval0) throws RedisException {
+    public void setVal(byte[] val0) throws RedisException {
 
         int indexVal = 8 + 4 + 4 + 8 + 8 + 4;
 
-        ByteBuf sourceBuf = Unpooled.wrappedBuffer(source0);
-
-        ByteBuf ttlBuf = sourceBuf.slice(0, indexVal);
-        ByteBuf val1Buf = Unpooled.wrappedBuffer(updateval0);
+        ByteBuf ttlBuf = this.valBuf.slice(0, indexVal);
+        ByteBuf val1Buf = Unpooled.wrappedBuffer(val0);
         valBuf = Unpooled.wrappedBuffer(ttlBuf, val1Buf);//零拷贝
-
-        valBuf.resetReaderIndex();
-
-        return valBuf.readBytes(valBuf.readableBytes()).array();
 
     }
 
@@ -329,7 +284,7 @@ public class ListNode extends BaseNode {
         return get(NSEQ);
     }
 
-    public ListNode next() throws RedisException {
+    public ListLinkNode next() throws RedisException {
         if (getNseq() == -1) {
 
             return null;
@@ -337,18 +292,9 @@ public class ListNode extends BaseNode {
         return create().genKey(getKey0(), getNseq()).get();
     }
 
-    public ListNode setNseq(long val) throws RedisException {
+    public ListLinkNode setNseq(long val) throws RedisException {
         set(NSEQ, val);
         return this;
-    }
-
-
-    public long incrSEQ() throws RedisException {
-        return Math.incrementExact(getSeq());
-    }
-
-    public long decrSEQ() throws RedisException {
-        return Math.decrementExact(getSeq());
     }
 
 
@@ -356,8 +302,6 @@ public class ListNode extends BaseNode {
 //        keyBuf.resetReaderIndex();
         return get(SEQ);
     }
-
-
 
     public long getSeq0() throws RedisException {
         return seq;
@@ -379,27 +323,7 @@ public class ListNode extends BaseNode {
 
 
     public byte[] getKey0() {
-
-        if(key!=null) return key;
-        keyBuf.resetReaderIndex();
-
-//        ByteBuf preKeyBuf = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE, DataType.SPLIT);
-
-//        ByteBuf val0Buf = Unpooled.buffer(8);
-//        val0Buf.writeLong(seq);
-
-//        this.keyBuf = Unpooled.wrappedBuffer(preKeyBuf, val0Buf);
-
-        int start = instance.NS.length + DataType.SPLIT.length;
-
-        int length = keyBuf.capacity() - DataType.SPLIT.length * 2 - TYPE.length - 8-start;
-        ByteBuf kb=keyBuf.slice(start, length);
-
-        log.debug(toString(kb));
-
-        kb.resetReaderIndex();
-//        return key;
-        return toArray(kb);
+        return key;
     }
 
     public String getKey0Str() throws RedisException {
@@ -566,21 +490,6 @@ public class ListNode extends BaseNode {
         return valueBuf.readBytes(valueBuf.readableBytes()).array();
 
     }
-
-    public ByteBuf getVal0(byte[] val0) {
-
-        ByteBuf val=Unpooled.wrappedBuffer(val0);
-//        print(valBuf);
-
-        val.resetReaderIndex();
-        int indexVal = 8 + 4 + 4 + 8 + 8 + 4;
-        ByteBuf valueBuf = val.slice(indexVal, val0.length - indexVal);
-        return valueBuf;
-//        return valueBuf.readBytes(valueBuf.readableBytes()).array();
-
-    }
-
-
 
     public String getVal0Str() {
 

@@ -1,4 +1,4 @@
-package redis.server.netty;
+package redis.server.netty.rocksdb;
 
 import com.google.common.base.Throwables;
 import io.netty.buffer.ByteBuf;
@@ -10,6 +10,7 @@ import redis.netty4.BulkReply;
 import redis.netty4.IntegerReply;
 import redis.netty4.MultiBulkReply;
 import redis.netty4.Reply;
+import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
 
 import java.nio.charset.Charset;
@@ -18,9 +19,9 @@ import java.util.stream.Collectors;
 
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
-import static redis.server.netty.RedisBase.invalidValue;
-import static redis.server.netty.RedisBase.notInteger;
-import static redis.server.netty.RocksdbRedis._toint;
+import static redis.server.netty.rocksdb.RedisBase.invalidValue;
+import static redis.server.netty.rocksdb.RedisBase.notInteger;
+import static redis.server.netty.rocksdb.RocksdbRedis._toint;
 import static redis.util.Encoding.bytesToNum;
 import static redis.util.Encoding.numToBytes;
 
