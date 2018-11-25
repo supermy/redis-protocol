@@ -1,6 +1,7 @@
 package guava;
 
 import com.google.common.cache.*;
+import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
@@ -17,7 +18,7 @@ import java.util.concurrent.TimeUnit;
  * <p>       5、元素移出通知。</p>
  * <p>       6、缓存访问统计。</p><p>
  */
-public class TestCache {
+public class CacheTest {
 
     // 缓存接口这里是LoadingCache，LoadingCache在缓存项不存在时可以自动加载缓存
     static LoadingCache<Integer, HashMap> studentCache
@@ -54,7 +55,8 @@ public class TestCache {
             });
 
 
-    public static void main(String[] args) throws Exception {
+    @Test
+    public  void cache() throws Exception {
 
         for (int i = 0; i < 20; i++) {
             // 从缓存中得到数据，由于我们没有设置过缓存，所以需要通过CacheLoader加载缓存数据

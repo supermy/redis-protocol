@@ -1,3 +1,7 @@
+### 2018-11-24
+    Resid List类型采用RocksDb 原生支撑完成代码测试；
+    Todo 扩充指令，支持json 数据；
+
 ### 2018-11-15
 
     multi / exec  /watch

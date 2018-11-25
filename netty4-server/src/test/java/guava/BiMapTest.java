@@ -3,6 +3,7 @@ package guava;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import org.junit.Assert;
+import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -13,9 +14,10 @@ import java.util.List;
  * 测试对于 byte[] 是否支持
  * Created by moyong on 2017/11/4.
  */
-public class TestBiMap {
+public class BiMapTest {
 
-    public static void main(String[] args) {
+    @Test
+    public  void bimap() {
         BiMap<byte[],byte[]> weekNameMap = HashBiMap.create();
 
         byte[] key="key".getBytes();

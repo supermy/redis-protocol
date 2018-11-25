@@ -1,4 +1,4 @@
-package guava;
+package utils;
 
 /**
  * Created by moyong on 2017/10/31.
@@ -8,14 +8,18 @@ import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.apache.log4j.Logger;
+import org.junit.Test;
 import org.rocksdb.*;
 
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 public class RocksJavaTest {
+    private static org.apache.log4j.Logger log = Logger.getLogger(RocksJavaTest.class);
 
     private static final String dbPath = "datafam";
 
@@ -29,6 +33,26 @@ public class RocksJavaTest {
 
     }
 
+    /**
+     * 项目路径
+     *
+     * @param url
+     * @return
+     */
+    public  String basePath() {
+        URL url = this.getClass().getResource("/");
+
+        String path = url.getPath();
+
+        log.debug(path);
+
+        String basepath = path.substring(0,path.indexOf("target"));
+
+        log.debug(basepath);
+        return basepath;
+    }
+
+
 //    public  Map<Object, ColumnFamilyHandle> columnFamilies=new HashMap<Object, ColumnFamilyHandle>();
     public BiMap<Object,ColumnFamilyHandle> columnFamilies = HashBiMap.create();
 
@@ -38,14 +62,14 @@ public class RocksJavaTest {
         Options options = new Options();
         options.setCreateIfMissing(true);
         //构造 cf list
-        List<byte[]> cfs = RocksDB.listColumnFamilies(options, dbPath);
+        List<byte[]> cfs = RocksDB.listColumnFamilies(options, basePath()+dbPath);
 
-        System.out.println("cfs size:"+cfs.size());
+        log.debug("cfs size:"+cfs.size());
 
         if (cfs.size() > 0) {
             for (byte[] cf : cfs) {
                 columnFamilyDescriptors.add(new ColumnFamilyDescriptor(cf, new ColumnFamilyOptions()));
-                System.out.println("cfs name:"+new String(cf));
+                log.debug("cfs name:"+new String(cf));
             }
         } else {
             columnFamilyDescriptors.add(new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, new ColumnFamilyOptions()));
@@ -54,7 +78,7 @@ public class RocksJavaTest {
         //构造 cfh
         DBOptions dbOptions = new DBOptions();
         dbOptions.setCreateIfMissing(true);
-        rocksDB = RocksDB.open(dbOptions, dbPath, columnFamilyDescriptors, columnFamilyHandles);
+        rocksDB = RocksDB.open(dbOptions, basePath()+dbPath, columnFamilyDescriptors, columnFamilyHandles);
 
         byte[] ttl = "ttl".getBytes();
         byte[] size = "size".getBytes();
@@ -68,7 +92,7 @@ public class RocksJavaTest {
         createCF(columnFamilyDescriptors, nseq, columnFamilyHandles);
         createCF(columnFamilyDescriptors, cseq, columnFamilyHandles);
 
-        cfs = RocksDB.listColumnFamilies(options, dbPath);
+        cfs = RocksDB.listColumnFamilies(options,basePath()+ dbPath);
 
         for(int i=0;i<cfs.size();i++) {
             byte[] b = cfs.get(i);
@@ -131,27 +155,28 @@ public class RocksJavaTest {
     }
 
 
+    @Test
     //  RocksDB.DEFAULT_COLUMN_FAMILY
     public void testDefaultColumnFamily() throws RocksDBException {
 
         Options options = new Options();
         options.setCreateIfMissing(true);
 
-        rocksDB = RocksDB.open(options, dbPath);
+        rocksDB = RocksDB.open(options, basePath()+dbPath);
         byte[] key = "Hello".getBytes();
         byte[] value = "World".getBytes();
         rocksDB.put(key, value);
 
-        List<byte[]> cfs = RocksDB.listColumnFamilies(options, dbPath);
-        System.out.println("列出所有的 cf");
+        List<byte[]> cfs = RocksDB.listColumnFamilies(options, basePath()+dbPath);
+        log.debug("列出所有的 cf");
 
         for (byte[] cf : cfs) {
-            System.out.println(new String(cf));
+            log.debug(new String(cf));
         }
 
-        System.out.println("one key");
+        log.debug("one key");
         byte[] getValue = rocksDB.get(key);
-        System.out.println(new String(getValue));
+        log.debug(new String(getValue));
 
         rocksDB.put("SecondKey".getBytes(), "SecondValue".getBytes());
 
@@ -159,31 +184,32 @@ public class RocksJavaTest {
         keys.add(key);
         keys.add("SecondKey".getBytes());
 
-        System.out.println("组合查询");
+        log.debug("组合查询");
         Map<byte[], byte[]> valueMap = rocksDB.multiGet(keys);
         for (Map.Entry<byte[], byte[]> entry : valueMap.entrySet()) {
-            System.out.println(new String(entry.getKey()) + ":" + new String(entry.getValue()));
+            log.debug(new String(entry.getKey()) + ":" + new String(entry.getValue()));
         }
 
-        System.out.println("遍历");
+        log.debug("遍历");
 
         RocksIterator iter = rocksDB.newIterator();
         for (iter.seekToFirst(); iter.isValid(); iter.next()) {
-            System.out.println("iter key:" + new String(iter.key()) + ", iter value:" + new String(iter.value()));
+            log.debug("iter key:" + new String(iter.key()) + ", iter value:" + new String(iter.value()));
         }
 
-        System.out.println("删除 one key 后遍历");
+        log.debug("删除 one key 后遍历");
 
         rocksDB.delete(key);
-        System.out.println("after remove key:" + new String(key));
+        log.debug("after remove key:" + new String(key));
 
         iter = rocksDB.newIterator();
         for (iter.seekToFirst(); iter.isValid(); iter.next()) {
-            System.out.println("iter key:" + new String(iter.key()) + ", iter value:" + new String(iter.value()));
+            log.debug("iter key:" + new String(iter.key()) + ", iter value:" + new String(iter.value()));
         }
 
     }
 
+    @Test
     public void testCertainColumnFamily() throws RocksDBException {
         String table = "CertainColumnFamilyTest";
         String key = "certainKey";
@@ -193,17 +219,18 @@ public class RocksJavaTest {
         Options options = new Options();
         options.setCreateIfMissing(true);
 
+        log.debug(""+basePath()+dbPath);
         //构造 cf list
-        List<byte[]> cfs = RocksDB.listColumnFamilies(options, dbPath);
+        List<byte[]> cfs = RocksDB.listColumnFamilies(options, basePath()+dbPath);
 
 
         if (cfs.size() > 0) {
-            System.out.println("cfs size  : " + cfs.size());
+            log.debug("cfs size  : " + cfs.size());
 
             for (byte[] cf : cfs) {
                 columnFamilyDescriptors.add(new ColumnFamilyDescriptor(cf, new ColumnFamilyOptions()));
-                System.out.println("=================columnFamilyHandles size:" + Arrays.equals(cf, "CertainColumnFamilyTest".getBytes()));
-                System.out.println("=================columnFamilyHandles size:" + new String(cf));
+                log.debug("=================columnFamilyHandles size:" + Arrays.equals(cf, "CertainColumnFamilyTest".getBytes()));
+                log.debug("=================columnFamilyHandles size:" + new String(cf));
 
             }
         } else {
@@ -214,8 +241,8 @@ public class RocksJavaTest {
         DBOptions dbOptions = new DBOptions();
         dbOptions.setCreateIfMissing(true);
 
-        rocksDB = RocksDB.open(dbOptions, dbPath, columnFamilyDescriptors, columnFamilyHandles);
-        System.out.println("=================columnFamilyHandles size:" + columnFamilyHandles.size());
+        rocksDB = RocksDB.open(dbOptions, basePath()+dbPath, columnFamilyDescriptors, columnFamilyHandles);
+        log.debug("=================columnFamilyHandles size:" + columnFamilyHandles.size());
 
         byte[] key11 = "Hello".getBytes();
         byte[] value11 = "World".getBytes();
@@ -235,13 +262,13 @@ public class RocksJavaTest {
         rocksDB.put(columnFamilyHandle, key.getBytes(), value.getBytes());
 
         byte[] getValue = rocksDB.get(columnFamilyHandle, key.getBytes());
-        System.out.println("get Value : " + new String(getValue));
+        log.debug("get Value : " + new String(getValue));
 
         rocksDB.put(columnFamilyHandle, "SecondKey".getBytes(), "SecondValue".getBytes());
 
 //        List<byte[]> cfs1 = RocksDB.listColumnFamilies(options, dbPath);
 //        for(byte[] cf : cfs1) {
-//            System.out.println(new String(cf));
+//            log.debug(new String(cf));
 //        }
 
 
@@ -258,21 +285,21 @@ public class RocksJavaTest {
 
         Map<byte[], byte[]> multiGet = rocksDB.multiGet(handleList, keys);
         for (Map.Entry<byte[], byte[]> entry : multiGet.entrySet()) {
-            System.out.println(new String(entry.getKey()) + "--" + new String(entry.getValue()));
+            log.debug(new String(entry.getKey()) + "--" + new String(entry.getValue()));
         }
 
 
         rocksDB.delete(columnFamilyHandle, key.getBytes());
-        System.out.println("================remove after ...=1");
+        log.debug("================remove after ...=1");
 
         RocksIterator iter = rocksDB.newIterator(columnFamilyHandle);
         for (iter.seekToFirst(); iter.isValid(); iter.next()) {
-            System.out.println(new String(iter.key()) + ":" + new String(iter.value()));
+            log.debug(new String(iter.key()) + ":" + new String(iter.value()));
         }
 
 
-        System.out.println("=================2 columnFamilyHandles.get(0)" + columnFamilyHandles.get(0));
-        System.out.println("=================2 columnFamilyHandles.get(1)" + columnFamilyHandles.get(1));
+        log.debug("=================2 columnFamilyHandles.get(0)" + columnFamilyHandles.get(0));
+        log.debug("=================2 columnFamilyHandles.get(1)" + columnFamilyHandles.get(1));
 
         final WriteBatch wb = new WriteBatch();
         wb.put(columnFamilyHandles.get(0), "ThreeKey".getBytes(), "ThreeValue".getBytes());
@@ -281,7 +308,7 @@ public class RocksJavaTest {
 
         RocksIterator iter3 = rocksDB.newIterator(columnFamilyHandles.get(0));
         for (iter3.seekToFirst(); iter3.isValid(); iter3.next()) {
-            System.out.println(new String(iter3.key()) + ":" + new String(iter3.value()));
+            log.debug(new String(iter3.key()) + ":" + new String(iter3.value()));
 
 //            rocksDB.del(iter3.key());
 
@@ -291,61 +318,62 @@ public class RocksJavaTest {
 //        rocksDB.multiGet();
 //        rocksDB.write();
 
-        System.out.println("=================3");
+        log.debug("=================3");
 
         List<RocksIterator> rocksIterators = rocksDB.newIterators(handleList);
         for (RocksIterator ri : rocksIterators
                 ) {
-            System.out.println("************");
+            log.debug("************");
 
             for (ri.seekToFirst(); ri.isValid(); ri.next()) {
-                System.out.println(new String(ri.key()) + ":" + new String(ri.value()));
+                log.debug(new String(ri.key()) + ":" + new String(ri.value()));
             }
         }
 
     }
 
-    public static void main(String[] args) throws RocksDBException {
+    @Test
+    public  void main() throws RocksDBException {
         //
         // 通过两次获取数据，一次是 mulget key;一次是 mulget ttl ;一次是 mulget size ;
         //
-        RocksJavaTest test = new RocksJavaTest();
+//        RocksJavaTest test = new RocksJavaTest();
 //      test.testDefaultColumnFamily();
 //        test.testCertainColumnFamily();
 
         List<ColumnFamilyHandle> cfhs = new ArrayList<>();
 
-        RocksDB db = test.getdb(cfhs);
+        RocksDB db = getdb(cfhs);
 
-        System.out.println("....cfhs:"+cfhs.size());
+        log.debug("....cfhs:"+cfhs.size());
 
 
 
         //批量写
         //批量读
-        Map<Object, ColumnFamilyHandle> columnFamilies = test.columnFamilies;
+//        Map<Object, ColumnFamilyHandle> columnFamilies = columnFamilies;
 
         db.put("1".getBytes(),"1".getBytes());
 
-        System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+        log.debug(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
 
-        test.saveListData(db,"1".getBytes(),"1v".getBytes(),"ttl".getBytes(),"size".getBytes(),"pseq".getBytes(),"nseq".getBytes(),"cseq".getBytes());
-        System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        saveListData(db,"1".getBytes(),"1v".getBytes(),"ttl".getBytes(),"size".getBytes(),"pseq".getBytes(),"nseq".getBytes(),"cseq".getBytes());
+        log.debug("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
 
-        test.getListData(db,"1".getBytes());
-        System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        getListData(db,"1".getBytes());
+        log.debug("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
 
-//        System.out.println(columnFamilies);
-//        System.out.println(columnFamilies.get("ttl"));
-//        System.out.println("....cfhs:"+new String(db.get("1".getBytes())));
+//        log.debug(columnFamilies);
+//        log.debug(columnFamilies.get("ttl"));
+//        log.debug("....cfhs:"+new String(db.get("1".getBytes())));
 //
-//        System.out.println(db.get(columnFamilies.get("ttl"),"1".getBytes()));
-//        System.out.println(db.get(columnFamilies.get("size"),"1".getBytes()));
-//        System.out.println(db.get(columnFamilies.get("pseq"),"1".getBytes()));
-//        System.out.println(db.get(columnFamilies.get("nseq"),"1".getBytes()));
-//        System.out.println(db.get(columnFamilies.get("cseq"),"1".getBytes()));
+//        log.debug(db.get(columnFamilies.get("ttl"),"1".getBytes()));
+//        log.debug(db.get(columnFamilies.get("size"),"1".getBytes()));
+//        log.debug(db.get(columnFamilies.get("pseq"),"1".getBytes()));
+//        log.debug(db.get(columnFamilies.get("nseq"),"1".getBytes()));
+//        log.debug(db.get(columnFamilies.get("cseq"),"1".getBytes()));
 
-        System.out.println("<<<cleanBy<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        log.debug("<<<cleanBy<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
 
         //批量删除
         db.put("abc#1".getBytes(),"value".getBytes());
@@ -369,7 +397,7 @@ public class RocksJavaTest {
         RocksIterator iter = db.newIterator();
         for (iter.seek("ab".getBytes()); iter.isValid(); iter.next()) {
 //            iter.status();
-            System.out.println(new String(iter.key()) + ":" + new String(iter.value()));
+            log.debug(new String(iter.key()) + ":" + new String(iter.value()));
         }
 
 //        db.cleanBy("abc3".getBytes(),"abf4".getBytes());
@@ -404,11 +432,11 @@ public class RocksJavaTest {
 
         db.write(new WriteOptions(), wb);
 
-        System.out.println(db.get(columnFamilies.get("ttl"),"1ttl".getBytes()));
-        System.out.println(db.get(columnFamilies.get("size"),"1size".getBytes()));
-        System.out.println(db.get(columnFamilies.get("pseq"),"1pseq".getBytes()));
-        System.out.println(db.get(columnFamilies.get("nseq"),"1nseq".getBytes()));
-        System.out.println(db.get(columnFamilies.get("cseq"),"1cseq".getBytes()));
+        log.debug(db.get(columnFamilies.get("ttl"),"1ttl".getBytes()));
+        log.debug(db.get(columnFamilies.get("size"),"1size".getBytes()));
+        log.debug(db.get(columnFamilies.get("pseq"),"1pseq".getBytes()));
+        log.debug(db.get(columnFamilies.get("nseq"),"1nseq".getBytes()));
+        log.debug(db.get(columnFamilies.get("cseq"),"1cseq".getBytes()));
 
     }
 
@@ -425,7 +453,7 @@ public class RocksJavaTest {
         byte[] array = keyBuf.readBytes(keyBuf.readableBytes()).array();
 
 //        return array;
-        System.out.println(new String(array));
+        log.debug(new String(array));
 
 
         return key;
@@ -467,19 +495,19 @@ public class RocksJavaTest {
 //        db.get(columnFamilies.get("nseq"),key);
 //        db.get(columnFamilies.get("cseq"),key);
 
-        System.out.println( "======================="+ db.getLatestSequenceNumber());
+        log.debug( "======================="+ db.getLatestSequenceNumber());
 
         Map<byte[], byte[]> map = db.multiGet(handleList, keys);
-        System.out.println(map.keySet().size());
+        log.debug(map.keySet().size());
 
 //        map.put(key,  db.get(key));
 
         //fixme 同一个 key 不同  cf 的数据不能通过 multiget 获取，业务上就不能利用 cf 保存相机的数据，除非 key 不一样
         Map<byte[], byte[]> multiGet = db.multiGet(handleList, keys);
-        System.out.println(multiGet.keySet().size());
+        log.debug(multiGet.keySet().size());
 
         for (Map.Entry<byte[], byte[]> entry : multiGet.entrySet()) {
-            System.out.println(new String(entry.getKey()) + "--" + new String(entry.getValue()));
+            log.debug(new String(entry.getKey()) + "--" + new String(entry.getValue()));
         }
 
 

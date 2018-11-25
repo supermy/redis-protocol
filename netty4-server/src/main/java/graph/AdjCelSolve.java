@@ -1,4 +1,4 @@
-package guava.graph;
+package graph;
 
 /**
  * Created by moyong on 2017/10/30.

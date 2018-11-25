@@ -1,4 +1,4 @@
-package guava;
+package utils;
 
 /**
  * Created by moyong on 2017/10/31.
@@ -7,9 +7,12 @@ import java.util.Arrays;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.junit.Test;
 
-public class TestSeraial {
-    public static void main(String[] args) {
+public class SeraialTest {
+
+    @Test
+    public  void sera() {
         // 长度可动态扩展
         ByteBuf buffer = Unpooled.buffer(8);
         buffer.writeInt(8);

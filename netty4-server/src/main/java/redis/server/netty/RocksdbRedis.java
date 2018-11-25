@@ -2840,9 +2840,12 @@ public class RocksdbRedis extends RedisBase {
 
 
 
-    public static RocksDB mydata = getDb("netty4-server/db/data");
-    protected static RocksDB mymeta = getDb("netty4-server/db/meta");
-    protected static RocksDB myexpires = getDb("netty4-server/db/expires");
+//    public static RocksDB mydata = getDb("netty4-server/db/data");
+    public static RocksDB mydata = getDb("/Users/moyong/project/env-myopensource/2-cloud/redis-protocol/netty4-server/db/data");
+
+
+    protected static RocksDB mymeta = getDb("/Users/moyong/project/env-myopensource/2-cloud/redis-protocol/netty4-server/db/meta");
+    protected static RocksDB myexpires = getDb("/Users/moyong/project/env-myopensource/2-cloud/redis-protocol/netty4-server/db/expires");
 
     //Redis String 类型；
     //protected static StringMeta stringMeta = StringMeta.getInstance(mydata,"redis".getBytes());

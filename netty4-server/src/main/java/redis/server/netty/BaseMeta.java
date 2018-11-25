@@ -73,7 +73,7 @@ public class BaseMeta {
      * @param key0
      * @throws RedisException
      */
-    protected void deleteRange(byte[] key0) throws RedisException {
+    public void deleteRange(byte[] key0) throws RedisException {
 
 
 
