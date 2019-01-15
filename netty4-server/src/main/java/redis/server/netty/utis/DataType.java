@@ -28,6 +28,11 @@ public class DataType {
   public static final byte[] KEY_ZSET_SORT = "10".getBytes();
   public static final int VAL_ZSET_SORT = 60;
 
+
+  public static final int KEY_HYPERLOGLOG = 70;
+
+
+
   public static final int DEFAULT_NS = 0;
 
 //  public static ByteBuf getNs(){

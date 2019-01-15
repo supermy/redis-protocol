@@ -1,3 +1,46 @@
+### 2019-01-15
+    HyperLogLog类型支撑完成，测试完成。
+
+### 2019-01-11
+    HyperLogLog类型支撑
+    kyro 与 ByteBuf的效率与大小的对比；是选择效率，还是选则压缩空间。
+
+### 2019-01-10
+    零拷贝：ZerocopyFile、ZerocopyServer
+    轮询：RoundRobin2Test
+    
+    地理位置：GeoHashTest/GeohashUtil
+    基数统计：HyperLogLogTest
+    是否重复：BloomFilterTest
+    
+    Json查询；JsonPathTest 
+    Json遍历：GsonTest  
+    
+    二叉树-链式存储：BinaryTree
+    二叉树：BTree 
+    
+    位计算：SimpleSet、BitSetTest、BitSetDemo、BitMapTest、BitMap
+    Bitmap：RoaringBitmapTest
+    
+
+### 2019-01-06
+    Guava LoadingCache 完成 RoaringBitmap/Hyperloglog/BloomFilter定时同步到RocksDb;
+    高效的多维空间点索引算法 — Geohash 和 Google S2
+    
+
+
+### 2019-01-03
+    实现位图索引：数据清洗时完成数据字典业务整理。
+        1.索引存储：数据Key Hash,表名+indexBitMap+rowNumber=dataId;数据字典Hash,表名+编码字段+字段枚举值=枚举编码；索引数据Hash,表名+索引字段+字段字典枚举值=索引bitmap
+        2.索引检索：表名+字段+数据字典枚举值获取索引bitmap,通过索引bitmap的 and or 运算，获取为true的位置即为rowNumber;
+        3.索引返回：Hash获取，表名+rowNumber 返回dataId,从数据源通过dataId获取数据；
+        注意采用kryo+RoaringBitmap进行序列化及bit计算。
+        
+    BloomFilter & Hyperloglog 去重 & 统计
+
+### 2018-12-19
+    Json 类型支撑采用JsonPath 支持，内置GsonJsonProvider与GsonMappingProvider提高效率，Json 字符串落盘RocksDb;
+
 ### 2018-11-24
     Resid List类型采用RocksDb 原生支撑完成代码测试；
     Todo 扩充指令，支持json 数据；lua 解析json 为基本数据???；java 解析为json ->tree node
