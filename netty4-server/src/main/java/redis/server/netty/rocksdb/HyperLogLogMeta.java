@@ -4,6 +4,7 @@ import com.clearspring.analytics.stream.cardinality.CardinalityMergeException;
 import com.clearspring.analytics.stream.cardinality.HyperLogLog;
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus;
 import com.google.common.base.Throwables;
+import com.google.common.cache.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
@@ -12,14 +13,18 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
+import org.supermy.util.MyUtils;
 import redis.netty4.*;
 import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 import static redis.netty4.BulkReply.NIL_REPLY;
@@ -69,7 +74,7 @@ public class HyperLogLogMeta {
 
     ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
 
-    private RocksDB db;
+    private static RocksDB db;
 
     private byte[] NS;
     private static byte[] TYPE = DataType.KEY_META;
@@ -472,7 +477,7 @@ public class HyperLogLogMeta {
             throw new RedisException("wrong number of arguments for PFADD");
         }
 
-        //判断类型，非hash 类型返回异常信息；
+        //判断类型，非hash 类型返回异常信息； fixme 改走缓存
         int type = getMeta().getType();
 
         if (type != -1 && type != DataType.KEY_HYPERLOGLOG) {
@@ -483,18 +488,25 @@ public class HyperLogLogMeta {
         log.debug(getKey0Str());
 
         //初始化HLL
-        HyperLogLog hll = null;
-        BulkReply bulkReply = get(getKey0());
-        if (bulkReply.isEmpty()){
-             hll = new HyperLogLog(12);
-        } else {
-            try {
-                hll=HyperLogLog.Builder.build(getVal0());
-            } catch (IOException e) {
-                e.printStackTrace();
-                Throwables.propagateIfPossible(e,RedisException.class);
-            }
+        HyperLogLog hll= null;//尽量放在循环体外，可以节约一半的时间；
+        try {
+            hll = hyperLogLogCache.get(Unpooled.wrappedBuffer(getKey0()));
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+            Throwables.propagateIfPossible(e,RedisException.class);
         }
+
+//        BulkReply bulkReply = get(getKey0());
+//        if (bulkReply.isEmpty()){
+//             hll = new HyperLogLog(12);
+//        } else {
+//            try {
+//                hll=HyperLogLog.Builder.build(getVal0());
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//                Throwables.propagateIfPossible(e,RedisException.class);
+//            }
+//        }
 
         //赋值HLL
         for (int i = 0; i < members.length; i++) {
@@ -503,13 +515,13 @@ public class HyperLogLogMeta {
 
         log.debug(hll.cardinality());
 
-        //持久化HLL
-        try {
-            set(getKey0(),hll.getBytes(),null);
-        } catch (IOException e) {
-            e.printStackTrace();
-            Throwables.propagateIfPossible(e,RedisException.class);
-        }
+//        //持久化HLL
+//        try {
+//            set(getKey0(),hll.getBytes(),null);
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//            Throwables.propagateIfPossible(e,RedisException.class);
+//        }
 
         return integer(members.length);
     }
@@ -525,14 +537,23 @@ public class HyperLogLogMeta {
         long count=0l;
         for (byte[] key:key0
              ) {
-            get(key);
-            HyperLogLog hll= null;
+//            get(key);
+
+            HyperLogLog hll= null;//尽量放在循环体外，可以节约一半的时间；
             try {
-                hll = HyperLogLog.Builder.build(getVal0());
-            } catch (IOException e) {
+                hll = hyperLogLogCache.get(Unpooled.wrappedBuffer(key));
+            } catch (ExecutionException e) {
                 e.printStackTrace();
                 Throwables.propagateIfPossible(e,RedisException.class);
             }
+
+//            HyperLogLog hll= null;
+//            try {
+//                hll = HyperLogLog.Builder.build(getVal0());
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//                Throwables.propagateIfPossible(e,RedisException.class);
+//            }
             count=count+hll.cardinality();
         }
         return integer(count);
@@ -543,40 +564,63 @@ public class HyperLogLogMeta {
         long count=0l;
 
         //合并
+        try {
         HyperLogLog hll0=null;
         for (int i = 0; i <key0.length ; i++) {
             if (i==0){
-                get(key0[i]);
-                try {
-                    hll0=HyperLogLog.Builder.build(getVal0());
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    Throwables.propagateIfPossible(e,RedisException.class);
-                }
+
+                hll0=hyperLogLogCache.get(Unpooled.wrappedBuffer(key0[i]));//尽量放在循环体外，可以节约一半的时间；
+
+
+//                get(key0[i]);
+//                try {
+//                    hll0=HyperLogLog.Builder.build(getVal0());
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                    Throwables.propagateIfPossible(e,RedisException.class);
+//                }
             }else{
-                get(key0[i]);
-                HyperLogLog hll= null;
-                try {
-                    hll = HyperLogLog.Builder.build(getVal0());
-                    hll0.addAll(hll);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    Throwables.propagateIfPossible(e,RedisException.class);
-                } catch (CardinalityMergeException e) {
-                    e.printStackTrace();
-                    Throwables.propagateIfPossible(e,RedisException.class);
-                }
+                HyperLogLog hll=hyperLogLogCache.get(Unpooled.wrappedBuffer(key0[i]));//尽量放在循环体外，可以节约一半的时间；
+
+                log.debug(hll0.cardinality());
+                log.debug(hll.cardinality());
+
+                hll0.addAll(hll);
+
+                log.debug(hll0.cardinality());
+
+
+//                get(key0[i]);
+//                HyperLogLog hll= null;
+//                try {
+//                    hll = HyperLogLog.Builder.build(getVal0());
+//                    hll0.addAll(hll);
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                    Throwables.propagateIfPossible(e,RedisException.class);
+//                } catch (CardinalityMergeException e) {
+//                    e.printStackTrace();
+//                    Throwables.propagateIfPossible(e,RedisException.class);
+//                }
 
             }
         }
-        //提取数据
-        count=hll0.cardinality();
-        try {
-            set(getKey0(), hll0.getBytes(),null);
-        } catch (IOException e) {
+            //提取数据
+            count=hll0.cardinality();
+
+        } catch (ExecutionException | CardinalityMergeException e) {
             e.printStackTrace();
             Throwables.propagateIfPossible(e,RedisException.class);
         }
+
+        hyperLogLogCache.invalidate(MyUtils.ByteBuf2String(getMetaKey1(key0[0])));
+//
+//        try {
+//            set(getKey0(), hll0.getBytes(),null);
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//            Throwables.propagateIfPossible(e,RedisException.class);
+//        }
 
         return integer(count);
     }
@@ -608,6 +652,116 @@ public class HyperLogLogMeta {
         }
     }
 
+
+    public static byte[] getMetaKey(byte[] key0) {
+        ByteBuf metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        return MyUtils.toByteArray(metaKey);
+    }
+
+    public static ByteBuf getMetaKey1(byte[] key0) {
+        ByteBuf metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        return metaKey;
+    }
+
+    public static byte[] getMetaVal(byte[] value, long expiration) {
+
+        ByteBuf buf = Unpooled.buffer(12);
+        buf.writeLong(expiration); //ttl 无限期 -1
+        buf.writeBytes(DataType.SPLIT);
+
+        buf.writeInt(DataType.KEY_BLOOMFILTER); //value type
+        buf.writeBytes(DataType.SPLIT);
+
+        buf.writeInt(value.length); //value size
+        buf.writeBytes(DataType.SPLIT);
+
+        //业务数据
+        buf.writeBytes(value);
+
+        return MyUtils.toByteArray(buf);
+
+    }
+
+    public static byte[] getMetaVal0(ByteBuf metaVal) throws RedisException {
+        metaVal.resetReaderIndex();
+        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
+        return MyUtils.toByteArray(valueBuf);
+    }
+
+    /**
+     * 在内存中进行计算，定期持久化到HyperLogLog;
+     */
+    static LoadingCache<ByteBuf, HyperLogLog> hyperLogLogCache
+            // CacheBuilder的构造函数是私有的，只能通过其静态方法newBuilder()来获得CacheBuilder的实例
+            = CacheBuilder.newBuilder()
+            // 设置并发级别为8，并发级别是指可以同时写缓存的线程数
+            .concurrencyLevel(8)
+            // 设置写缓存后8秒钟过期
+            .expireAfterWrite(60, TimeUnit.SECONDS)
+            // 设置缓存容器的初始容量为10
+            .initialCapacity(10)
+//            .maximumWeight(10*1024*1024)
+            // 设置缓存最大容量为100，超过100之后就会按照LRU最近虽少使用算法来移除缓存项
+            .maximumSize(100)
+            // 设置要统计缓存的命中率
+            .recordStats()
+            // 设置缓存的移除通知 ,将数据持久化到RocksDb
+            .removalListener(new RemovalListener<ByteBuf, HyperLogLog>() {
+                public void onRemoval(RemovalNotification<ByteBuf, HyperLogLog> notification) {
+                    log.debug(String.format("因为%s的原因，%s=%s已经删除",
+                            notification.getCause(),
+                            MyUtils.ByteBuf2String(notification.getKey()),
+                            notification.getValue().cardinality()));
+
+                    try {
+                        {
+                            HyperLogLog hll = notification.getValue();
+
+                            db.put(getMetaKey(notification.getKey().array()), getMetaVal(hll.getBytes(), -1));
+
+
+                            log.debug(String.format("获取HyperLogLog(基数=%s) 列表，持久化到 RocksDb。\n key:%s 初始验证：%s  修改验证：%s",
+                                    hll.cardinality(),
+                                    MyUtils.ByteBuf2String(notification.getKey()),
+                                    hll.offer("test_one".getBytes()),
+                                    hll.offer("test_modify".getBytes())
+                                    )
+                            );
+                        }
+                    } catch (RocksDBException | IOException e) {
+                        e.printStackTrace();
+//                        Throwables.propagateIfPossible(e, RedisException.class);
+                    }
+
+                }
+            })
+
+            // build方法中可以指定CacheLoader，在缓存不存在时通过CacheLoader的实现自动加载缓存
+            // 从RocksDb中加载数据
+            .build(new CacheLoader<ByteBuf, HyperLogLog>() {
+                @Override
+                public HyperLogLog load(ByteBuf key0) throws Exception {
+                    key0.resetReaderIndex();
+//                    byte[] value = db.get(key.array());
+                    byte[] value = db.get(getMetaKey(key0.array()));
+                    HyperLogLog hll=null;
+
+                    if (value==null){
+                        hll = new HyperLogLog(12);
+                    }else {
+                        byte[] metaVal0 = getMetaVal0(MyUtils.concat(value));
+                        hll =HyperLogLog.Builder.build(metaVal0);
+                    }
+
+
+                    log.debug(String.format("加载HyperLogLog从RocksDb: key %s  数量%s  初始验证：%s ",
+                            MyUtils.ByteBuf2String(key0),
+                            hll.cardinality(),
+                            hll.offer("test_one".getBytes()))
+                    );
+                    return hll;
+                }
+            });
 
     public static void main(String[] args) throws Exception {
         hyperLogLogTest();

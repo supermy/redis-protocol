@@ -2845,8 +2845,8 @@ public class RocksdbRedis extends RedisBase {
     public static RocksDB mydata = getDb("/Users/moyong/project/env-myopensource/2-cloud/redis-protocol/netty4-server/db/data");
 
 
-    protected static RocksDB mymeta = getDb("/Users/moyong/project/env-myopensource/2-cloud/redis-protocol/netty4-server/db/meta");
-    protected static RocksDB myexpires = getDb("/Users/moyong/project/env-myopensource/2-cloud/redis-protocol/netty4-server/db/expires");
+    public static RocksDB mymeta = getDb("/Users/moyong/project/env-myopensource/2-cloud/redis-protocol/netty4-server/db/meta");
+    public static RocksDB myexpires = getDb("/Users/moyong/project/env-myopensource/2-cloud/redis-protocol/netty4-server/db/expires");
 
     //Redis String 类型；
     //protected static StringMeta stringMeta = StringMeta.getInstance(mydata,"redis".getBytes());
@@ -2882,7 +2882,9 @@ public class RocksdbRedis extends RedisBase {
                     .setMaxWriteBufferNumber(3)
                     .setMaxBackgroundCompactions(2)
                     .setCompressionType(CompressionType.SNAPPY_COMPRESSION)
+//                    .setCompactionStyle(CompactionStyle.LEVEL);
                     .setCompactionStyle(CompactionStyle.UNIVERSAL);
+
         } catch (final IllegalArgumentException e) {
             assert (false);
         }

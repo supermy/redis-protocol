@@ -30,6 +30,7 @@ public class DataType {
 
 
   public static final int KEY_HYPERLOGLOG = 70;
+  public static final int KEY_BLOOMFILTER = 80;
 
 
 

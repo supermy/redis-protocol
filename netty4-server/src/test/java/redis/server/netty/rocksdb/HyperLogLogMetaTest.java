@@ -35,17 +35,15 @@ public class HyperLogLogMetaTest {
     Assert.assertNull(metaString.get("HyperLogLog".getBytes()).data());
     Assert.assertNull(metaString.get("HyperLogLog2".getBytes()).data());
 
-    metaString.genMetaKey("HyperLogLog".getBytes()).pfadd(new byte[][]{"a".getBytes(), "b".getBytes(), "c".getBytes(),"d".getBytes()});
-    assertEquals(metaString.pfcount("HyperLogLog".getBytes()).data().longValue(),4);
+    metaString.genMetaKey("HyperLogLog".getBytes()).pfadd(new byte[][]{"start_a".getBytes(), "directBuffer_b".getBytes(), "directBuffer_c".getBytes(),"d".getBytes()});
+    assertEquals(metaString.pfcount("HyperLogLog".getBytes()).data().longValue(),5);
 
     metaString.genMetaKey("HyperLogLog2".getBytes()).pfadd(new byte[][]{"e".getBytes(), "f".getBytes(),"d".getBytes()});
-    assertEquals(metaString.pfcount("HyperLogLog2".getBytes()).data().longValue(),3);
+    assertEquals(metaString.pfcount("HyperLogLog2".getBytes()).data().longValue(),4);
 
 
     System.out.println(metaString.pfmerge("HyperLogLog".getBytes(),"HyperLogLog2".getBytes()).data());
-    assertEquals(metaString.pfmerge("HyperLogLog".getBytes(),"HyperLogLog2".getBytes()).data().longValue(),6);
-
-
+    assertEquals(metaString.pfmerge("HyperLogLog".getBytes(),"HyperLogLog2".getBytes()).data().longValue(),7);
 
 //
 //   测试创建 存储方法是get 与set;可以增加缓存；对外方法是pfadd/pfcount/pfmerge

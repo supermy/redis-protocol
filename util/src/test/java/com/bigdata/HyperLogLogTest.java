@@ -6,6 +6,8 @@ import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import net.agkn.hll.HLL;
+import org.apache.log4j.Logger;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -35,6 +37,8 @@ import static org.junit.Assert.assertEquals;
  *
  */
 public class HyperLogLogTest {
+    private static Logger log = Logger.getLogger(HyperLogLogTest.class);
+
     final int seed = 123456;
     HashFunction hash = Hashing.murmur3_128(seed);
 
@@ -143,38 +147,60 @@ public class HyperLogLogTest {
      */
     @Test
     public void testSerialization1_Normal() throws IOException {
-        Runtime rt = Runtime.getRuntime();
-        long start = System.currentTimeMillis();
-        long count = 0l;
-
 
 
         HyperLogLog hll = new HyperLogLog(12);
-        for (int i = 0; i < 100000; i++) {
-            hll.offer("" + i);
+        {
+            Runtime rt = Runtime.getRuntime();
+            long start = System.currentTimeMillis();
+            long count = 0l;
+
+            for (int i = 0; i < 1000000; i++) {
+                hll.offer("" + i);
 //            long hashedValue = hash.newHasher().putInt(i).hash().asLong();
 //            hll.offerHashed(hashedValue);
-            count++;
+                count++;
 
-            if (i % 5000 == 1) {
-                System.out.println("Total count:[" + count +
-                        "]  Unique count:[" + hll.cardinality() +
-                        "] FreeMemory:[" + rt.freeMemory() / 1024 + "K] ..");
+                if (i % 50000 == 1) {
+                    log.debug(String.format("\n Total count:[%s]  Unique count:[%s] FreeMemory:[%sK] ..",
+                            count,
+                            hll.cardinality(),
+                            rt.freeMemory() / 1024
+                    ));
+                }
             }
+
+            log.debug(String.format("\n 基于基数统计，花费时间%s毫秒 ；Total count:[%s]  Unique count:[%s] FreeMemory:[%sK] ..",
+                    System.currentTimeMillis()-start,
+                    count,
+                    hll.cardinality(),
+                    rt.freeMemory() / 1024
+            ));
         }
-        System.out.println(hll.cardinality());
-
-        long end = System.currentTimeMillis();
-        System.out.println("Total count:[" + count +
-                "]  Unique count:[" + hll.cardinality() +
-                "] FreeMemory:[" + rt.freeMemory() / 1024 + "K] ..");
-
-        System.out.println("Total cost:[" + (end - start) + "] ms ..");
 
 
-        HyperLogLog hll2 = HyperLogLog.Builder.build(hll.getBytes());
+        {
+            long start=System.nanoTime();
+            long count=100000;
 
-        System.out.println("HLL from bytes:Distinct count=" + hll2.cardinality());
+            for (int i = 0; i <count ; i++) {
+                HyperLogLog.Builder.build(hll.getBytes());
+            }
+
+            log.debug(String.format("\n 恢复%s次，花费时间%s毫秒 ；平均单个花费%s微秒",
+                    count,
+                    (System.nanoTime()-start)/1000/1000,
+                    (System.nanoTime()-start)/count/1000
+            ));
+
+            HyperLogLog hll2 = HyperLogLog.Builder.build(hll.getBytes());
+
+            log.debug(String.format("恢复的基数统计:Distinct count=%s",  hll2.cardinality()));
+
+            Assert.assertEquals(hll.cardinality(),hll2.cardinality());
+        }
+
+
 
     }
 

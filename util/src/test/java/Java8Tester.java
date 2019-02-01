@@ -1,5 +1,8 @@
+import org.junit.Test;
+
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.stream.Collectors;
 
 /**
  * Lambda 表达式，也可称为闭包，它是推动 Java 8 发布的最重要新特性。
@@ -129,5 +132,18 @@ public class Java8Tester {
 
     private int operate(int a, int b, MathOperation mathOperation){
         return mathOperation.operation(a, b);
+    }
+
+    /**
+     * Stream 带来的遍历的多线程并发
+     */
+    @Test
+    public void stream(){
+
+        Arrays.asList(1, 2, 3, 4, 5, 6, 7, 9, 8, 0, 1)
+                .stream()
+                .parallel()
+                .collect(Collectors.groupingBy(x -> x % 10))
+                .forEach((x, y) -> System.out.println(x + ":" + y));
     }
 }

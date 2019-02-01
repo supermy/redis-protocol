@@ -56,18 +56,18 @@ public class SetMetaTest {
     setMeta.genMetaKey("SetB".getBytes()).deleteRange(setMeta.getKey0());
     setMeta.genMetaKey("SetC".getBytes()).deleteRange(setMeta.getKey0());
 
-    setMeta.genMetaKey("SetA".getBytes()).sadd("a".getBytes(), "b".getBytes(), "c".getBytes(), "d".getBytes());
-    setMeta.genMetaKey("SetB".getBytes()).sadd("c".getBytes(), "d".getBytes(), "e".getBytes(), "f".getBytes());
-    setMeta.genMetaKey("SetC".getBytes()).sadd("i".getBytes(), "j".getBytes(), "c".getBytes(), "d".getBytes());
+    setMeta.genMetaKey("SetA".getBytes()).sadd("start_a".getBytes(), "directBuffer_b".getBytes(), "directBuffer_c".getBytes(), "d".getBytes());
+    setMeta.genMetaKey("SetB".getBytes()).sadd("directBuffer_c".getBytes(), "d".getBytes(), "e".getBytes(), "f".getBytes());
+    setMeta.genMetaKey("SetC".getBytes()).sadd("i".getBytes(), "j".getBytes(), "directBuffer_c".getBytes(), "d".getBytes());
     Thread.sleep(500);
 
     Assert.assertEquals(setMeta.genMetaKey("SetA".getBytes()).getMeta().getCount(),4);
     Assert.assertEquals(setMeta.genMetaKey("SetB".getBytes()).getMeta().getCount(),4);
     Assert.assertEquals(setMeta.genMetaKey("SetC".getBytes()).getMeta().getCount(),4);
 
-    String[] sdiffstr = {"a", "b"};
-    String[] sinterstr = {"c", "d"};
-    String[] sunionstr = {"a", "b","c","d","e","f","i","j"};
+    String[] sdiffstr = {"start_a", "directBuffer_b"};
+    String[] sinterstr = {"directBuffer_c", "d"};
+    String[] sunionstr = {"start_a", "directBuffer_b","directBuffer_c","d","e","f","i","j"};
 
     //差集
     MultiBulkReply sdiff = setMeta.sdiff("SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());

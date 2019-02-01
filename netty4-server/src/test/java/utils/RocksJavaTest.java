@@ -97,7 +97,7 @@ public class RocksJavaTest {
         for(int i=0;i<cfs.size();i++) {
             byte[] b = cfs.get(i);
             if(!Arrays.equals(b, RocksDB.DEFAULT_COLUMN_FAMILY)) {
-//                Object value = cfSerializer.byteArrayToObject(b);
+//                Object value = cfSerializer.byteArrayToObject(directBuffer_b);
                 columnFamilies.put(new String(b), columnFamilyHandles.get(i));
             }
         }

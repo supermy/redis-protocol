@@ -10,6 +10,7 @@ import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
 import redis.netty4.*;
 import redis.server.netty.RedisException;
+import redis.server.netty.SimpleRedisServer;
 import redis.server.netty.utis.DataType;
 
 import java.util.ArrayList;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static java.lang.Integer.MAX_VALUE;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
@@ -754,6 +756,230 @@ public class StringMeta {
         return integer(array.length);
 
     }
+
+    /**
+     *
+     * SETBIT key offset value
+     *
+     * 对 key 所储存的字符串值，设置或清除指定偏移量上的位(bit)。
+     *
+     * 位的设置或清除取决于 value 参数，可以是 0 也可以是 1 。
+     *
+     * 当 key 不存在时，自动生成一个新的字符串值。
+     *
+     * 字符串会进行伸展(grown)以确保它可以将 value 保存在指定的偏移量上。当字符串值进行伸展时，空白位置以 0 填充。
+     *
+     * offset 参数必须大于或等于 0 ，小于 2^32 (bit 映射被限制在 512 MB 之内)。
+     *
+     * 指定偏移量原来储存的位。
+     * redis> SETBIT bit 10086 1
+     * redis> GETBIT bit 10086
+     * redis> GETBIT bit 100   # bit 默认被初始化为 0
+     *
+     * @param key0
+     * @param offset1
+     * @param value2
+     * @return
+     * @throws RedisException
+     */
+    public IntegerReply setbit(byte[] key0, byte[] offset1, byte[] value2) throws RedisException {
+//        int bit = (int) bytesToNum(value2);
+//        if (bit != 0 && bit != 1) throw notInteger();
+//        Object o = _get(key0);
+//        if (o instanceof byte[] || o == null) {
+//            long offset = bytesToNum(offset1);
+//            long div = offset / 8;
+//            if (div + 1 > MAX_VALUE) throw notInteger();
+//
+//            byte[] bytes = (byte[]) o;
+//            if (bytes == null || bytes.length < div + 1) {
+//                byte[] tmp = bytes;
+//                bytes = new byte[(int) div + 1];
+//                if (tmp != null) System.arraycopy(tmp, 0, bytes, 0, tmp.length);
+//                _put(key0, bytes);
+//            }
+//            int mod = (int) (offset % 8);
+//            int value = bytes[((int) div)] & 0xFF;
+//            int i = value & mask[mod];
+//            if (i == 0) {
+//                if (bit != 0) {
+//                    bytes[((int) div)] += mask[mod];
+//                }
+//                return integer(0);
+//            } else {
+//                if (bit == 0) {
+//                    bytes[((int) div)] -= mask[mod];
+//                }
+//                return integer(1);
+//            }
+//        } else {
+//            throw invalidValue();
+//        }
+        return null;
+    }
+
+    /**
+     * GETBIT key offset
+     * 对 key 所储存的字符串值，获取指定偏移量上的位(bit)。
+     * 当 offset 比字符串值的长度大，或者 key 不存在时，返回 0 。
+     *
+     * 字符串值指定偏移量上的位(bit)。
+     * # 对不存在的 key 或者不存在的 offset 进行 GETBIT， 返回 0
+     *
+     *
+     * redis> EXISTS bit
+     * redis> GETBIT bit 10086*
+     *
+     * # 对已存在的 offset 进行 GETBIT
+     *
+     * redis> SETBIT bit 10086 1
+     * redis> GETBIT bit 10086
+     *
+     *
+     *
+     * @param key0
+     * @param offset1
+     * @return
+     * @throws RedisException
+     */
+    public IntegerReply getbit(byte[] key0, byte[] offset1) throws RedisException {
+//        Object o = _get(key0);
+//        if (o instanceof byte[]) {
+//            long offset = bytesToNum(offset1);
+//            byte[] bytes = (byte[]) o;
+//            return _test(bytes, offset) == 1 ? integer(1) : integer(0);
+//        } else if (o == null) {
+//            return integer(0);
+//        } else {
+//            throw invalidValue();
+//        }
+    return null;
+    }
+
+    /**
+     *
+     * 如果你的 bitmap 数据非常大，那么可以考虑使用以下两种方法：
+     *
+     * 将一个大的 bitmap 分散到不同的 key 中，作为小的 bitmap 来处理。使用 Lua 脚本可以很方便地完成这一工作。
+     * 使用 BITCOUNT 的 start 和 end 参数，每次只对所需的部分位进行计算，将位的累积工作(accumulating)放到客户端进行，并且对结果进行缓存 (caching)。
+     *
+     *
+     * BITCOUNT key [start] [end]
+     * 计算给定字符串中，被设置为 1 的比特位的数量。
+     * 一般情况下，给定的整个字符串都会被进行计数，通过指定额外的 start 或 end 参数，可以让计数只在特定的位上进行。
+     * start 和 end 参数的设置和 GETRANGE 命令类似，都可以使用负数值： 比如 -1 表示最后一个字节， -2 表示倒数第二个字节，以此类推。
+     * 不存在的 key 被当成是空字符串来处理，因此对一个不存在的 key 进行 BITCOUNT 操作，结果为 0 。
+     *
+     *
+     * @param key0
+     * @param start1
+     * @param end2
+     * @return
+     * @throws RedisException
+     */
+    public IntegerReply bitcount(byte[] key0, byte[] start1, byte[] end2) throws RedisException {
+//        Object o = _get(key0);
+//        if (o instanceof byte[]) {
+//            byte[] bytes = (byte[]) o;
+//            int size = bytes.length;
+//            int s = _torange(start1, size);
+//            int e = _torange(end2, size);
+//            if (e < s) e = s;
+//            int total = 0;
+//            for (int i = s; i <= e; i++) {
+//                int b = bytes[i] & 0xFF;
+//                for (int j = 0; j < 8; j++) {
+//                    if ((b & mask[j]) != 0) {
+//                        total++;
+//                    }
+//                }
+//            }
+//            return integer(total);
+//        } else if (o == null) {
+//            return integer(0);
+//        } else {
+//            throw invalidValue();
+//        }
+        return null;
+    }
+
+    /**
+     *
+     * BITOP operation destkey key [key ...]
+     *
+     * 对一个或多个保存二进制位的字符串 key 进行位元操作，并将结果保存到 destkey 上。
+     *
+     * operation 可以是 AND 、 OR 、 NOT 、 XOR 这四种操作中的任意一种：
+     *
+     * BITOP AND destkey key [key ...] ，对一个或多个 key 求逻辑并，并将结果保存到 destkey 。
+     * BITOP OR destkey key [key ...] ，对一个或多个 key 求逻辑或，并将结果保存到 destkey 。
+     * BITOP XOR destkey key [key ...] ，对一个或多个 key 求逻辑异或，并将结果保存到 destkey 。
+     * BITOP NOT destkey key ，对给定 key 求逻辑非，并将结果保存到 destkey 。
+     * 除了 NOT 操作之外，其他操作都可以接受一个或多个 key 作为输入。
+     *
+     * 处理不同长度的字符串
+     *
+     * 当 BITOP 处理不同长度的字符串时，较短的那个字符串所缺少的部分会被看作 0 。
+     *
+     * 空的 key 也被看作是包含 0 的字符串序列。
+     *
+     * >>>保存到 destkey 的字符串的长度，和输入 key 中最长的字符串长度相等。
+     *
+     * @param operation0
+     * @param destkey1
+     * @param key2
+     * @return
+     * @throws RedisException
+     */
+ public IntegerReply bitop(byte[] operation0, byte[] destkey1, byte[][] key2) throws RedisException {
+//        SimpleRedisServer.BitOp bitOp = SimpleRedisServer.BitOp.valueOf(new String(operation0).toUpperCase());
+//        int size = 0;
+//        for (byte[] aKey2 : key2) {
+//            int length = aKey2.length;
+//            if (length > size) {
+//                size = length;
+//            }
+//        }
+//        byte[] bytes = null;
+//        for (byte[] aKey2 : key2) {
+//            byte[] src;
+//            src = _getbytes(aKey2);
+//            if (bytes == null) {
+//                bytes = new byte[size];
+//                if (bitOp == SimpleRedisServer.BitOp.NOT) {
+//                    if (key2.length > 1) {
+//                        throw new RedisException("invalid number of arguments for 'bitop' NOT operation");
+//                    }
+//                    for (int i = 0; i < src.length; i++) {
+//                        bytes[i] = (byte) ~(src[i] & 0xFF);
+//                    }
+//                } else {
+//                    System.arraycopy(src, 0, bytes, 0, src.length);
+//                }
+//            } else {
+//                for (int i = 0; i < src.length; i++) {
+//                    int d = bytes[i] & 0xFF;
+//                    int s = src[i] & 0xFF;
+//                    switch (bitOp) {
+//                        case AND:
+//                            bytes[i] = (byte) (d & s);
+//                            break;
+//                        case OR:
+//                            bytes[i] = (byte) (d | s);
+//                            break;
+//                        case XOR:
+//                            bytes[i] = (byte) (d ^ s);
+//                            break;
+//                    }
+//                }
+//            }
+//        }
+//        _put(destkey1, bytes);
+//        return integer(bytes == null ? 0 : bytes.length);
+     return null;
+    }
+
+    enum BitOp {AND, OR, XOR, NOT}
 
 
     public static void main(String[] args) throws Exception {
