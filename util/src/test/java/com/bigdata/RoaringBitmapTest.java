@@ -58,6 +58,7 @@ public class RoaringBitmapTest {
         Roaring64NavigableMap r1 = new Roaring64NavigableMap();
 //        r1.add(1l,1008000l);//按范围添加数据
         r1.addLong(10086);//数据是1
+
         Assert.assertEquals(r1.contains(10086),true);
         Assert.assertEquals(r1.contains(100860),false);
         Assert.assertEquals(r1.getLongCardinality(),1l);
@@ -69,6 +70,9 @@ public class RoaringBitmapTest {
         Roaring64NavigableMap r2 = new Roaring64NavigableMap();
         r2.add(10086);
         r2.add(10000);
+
+        //        Assert.assertEquals(r1.rankLong(1),10086);
+        Assert.assertEquals(r2.select(1),10086);
 
         ByteArrayOutputStream baos = exportBitmap(r1);
         Roaring64NavigableMap r11 = importBitmap(baos);
@@ -180,7 +184,7 @@ public class RoaringBitmapTest {
             rr2.add(4000L, 4255L);
 
 //            System.out.println(rr.select(3)); // would return the third value or 1000
-            assertEquals(rr.select(3),1000);
+            assertEquals(rr.select(3),1000);//0-3
 //            System.out.println(rr.rank(2)); // would return the rank of 2, which is index 1
             assertEquals(rr.rank(2),2);
 

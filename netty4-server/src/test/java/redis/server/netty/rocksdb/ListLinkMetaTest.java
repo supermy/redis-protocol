@@ -26,7 +26,7 @@ public class ListLinkMetaTest {
   public  void testListL() throws RedisException {
 
     ListLinkMeta metaLPush = ListLinkMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-    metaLPush.genMetaKey("LPUSH".getBytes()).deleteRange(metaLPush.getKey0());
+    metaLPush.genMetaKey("LPUSH".getBytes()).clearMetaDataNodeData(metaLPush.getKey0());
 
     byte[][] lpusharray = {"XXX".getBytes(), "YYY".getBytes(), "ZZZ".getBytes(), "111".getBytes(), "222".getBytes(), "333".getBytes()};
     Assert.assertEquals(metaLPush.lpush(lpusharray).data().intValue(), 6);
@@ -145,7 +145,7 @@ public class ListLinkMetaTest {
   public  void testListR() throws RedisException {
     //测试删除
     ListLinkMeta metaRPush = ListLinkMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-    metaRPush.genMetaKey("ListRight".getBytes()).deleteRange(metaRPush.getKey0());
+    metaRPush.genMetaKey("ListRight".getBytes()).clearMetaDataNodeData(metaRPush.getKey0());
 
     //测试 rpush
     byte[][] rpusharray = {"XXX".getBytes(), "YYY".getBytes(), "ZZZ".getBytes(), "111".getBytes(), "222".getBytes(), "333".getBytes()};

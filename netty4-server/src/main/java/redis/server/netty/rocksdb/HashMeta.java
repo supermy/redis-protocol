@@ -1,11 +1,13 @@
 package redis.server.netty.rocksdb;
 
+import com.google.common.base.Throwables;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
+import org.supermy.util.MyUtils;
 import redis.netty4.*;
 import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
@@ -13,11 +15,14 @@ import redis.server.netty.utis.DataType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 import static java.lang.Double.parseDouble;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
+import static redis.netty4.MultiBulkReply.EMPTY;
 import static redis.netty4.StatusReply.OK;
+import static redis.netty4.StatusReply.QUIT;
 import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 import static redis.util.Encoding.bytesToNum;
 
@@ -66,6 +71,7 @@ public class HashMeta extends BaseMeta {
     public static HashMeta getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
+        instance.VAlTYPE = DataType.KEY_HASH;
         hashNode = HashNode.getInstance(db0, ns0);
         return instance;
     }
@@ -77,155 +83,138 @@ public class HashMeta extends BaseMeta {
      * @return
      * @throws RedisException
      */
+    @Deprecated
     public HashMeta genMetaKey(byte[] key0) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("key0 主键不能为空"));
         }
-        instance.metaKey = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        instance.metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
         return instance;
     }
 
-    private ByteBuf genMetaVal(long count) {
-        ByteBuf val = Unpooled.buffer(8);
+//    private ByteBuf genMetaVal(long count) {
+//        ByteBuf val = Unpooled.buffer(8);
+//
+//        val.writeLong(-1); //ttl 无限期 -1
+//        val.writeBytes(DataType.SPLIT);
+//
+//        val.writeInt(VAlTYPE); //long 8 bit
+//        val.writeBytes(DataType.SPLIT);
+//
+//        val.writeLong(count);  //数量
+//        val.writeBytes(DataType.SPLIT);
+//
+//        return val;
+//    }
 
-        val.writeLong(-1); //ttl 无限期 -1
-        val.writeBytes(DataType.SPLIT);
+//    /**
+//     * 创建meta key
+//     *
+//     * @param count
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected HashMeta setMeta(long count) throws RedisException {
+//
+//        this.metaVal = genMetaVal(count);
+//
+//        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
+//
+//        try {
+//            db.put(getKey(), getVal());//fixme
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
 
-        val.writeInt(DataType.KEY_HASH); //long 8 bit
-        val.writeBytes(DataType.SPLIT);
-
-        val.writeLong(count);  //数量
-        val.writeBytes(DataType.SPLIT);
-
-        return val;
-    }
-
-    /**
-     * 创建meta key
-     *
-     * @param count
-     * @return
-     * @throws RedisException
-     */
-    protected HashMeta setMeta(long count) throws RedisException {
-
-        this.metaVal = genMetaVal(count);
-
-        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
-
-        try {
-            db.put(getKey(), getVal());//fixme
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
-
-    /**
-     * 获取meta 数据
-     *
-     * @return
-     * @throws RedisException
-     */
-    public HashMeta getMeta() throws RedisException {
-
-        try {
-            byte[] value = db.get(getKey());
-            if (value == null) this.metaVal = null;
-            else
-                this.metaVal = Unpooled.wrappedBuffer(value);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
-
-
+//    /**
+//     * 获取meta 数据
+//     *
+//     * @return
+//     * @throws RedisException
+//     */
+//    public HashMeta getMeta() throws RedisException {
+//
+//        try {
+//            byte[] value = db.get(getKey());
+//            if (value == null) this.metaVal = null;
+//            else
+//                this.metaVal = Unpooled.wrappedBuffer(value);
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
 
 
-    public long getVal0() throws RedisException {
-        return metaVal.getLong(8 + 4 + 2);
-    }
-
-    public void setVal0(long val0) throws RedisException {
-        this.metaVal.setLong(8 + 4 + 2, val0);  //数量
-    }
-
-    public byte[] getVal() throws RedisException {
-        this.metaVal.resetReaderIndex();
-        return this.metaVal.readBytes(metaVal.readableBytes()).array();
-    }
-
-    public byte[] getVal(ByteBuf val) throws RedisException {
-        val.resetReaderIndex();
-        return val.readBytes(val.readableBytes()).array();
-    }
-
-    public long getTtl() {
-        return metaVal.getLong(0);
-    }
-
-    public int getType() throws RedisException {
-        if (metaVal == null) return -1;
-        return this.metaVal.getInt(8 + 1);
-    }
-
-    /**
-     * 元素数量
-     *
-     * @return
-     */
-    public long getCount() throws RedisException {
-        return getVal0();
-    }
 
 
-    public void setCount(long val) throws RedisException {
-        setVal0(val);
-    }
+//    public long getVal0() throws RedisException {
+//        return metaVal.getLong(8 + 4 + 2);
+//    }
+//
+//    public void setVal0(long val0) throws RedisException {
+//        this.metaVal.setLong(8 + 4 + 2, val0);  //数量
+//    }
+
+//    public byte[] getVal() throws RedisException {
+//        this.metaVal.resetReaderIndex();
+//        return this.metaVal.readBytes(metaVal.readableBytes()).array();
+//    }
+//
+//    public byte[] getVal(ByteBuf val) throws RedisException {
+//        val.resetReaderIndex();
+//        return val.readBytes(val.readableBytes()).array();
+//    }
+
+//    /**
+//     * 元素数量
+//     *
+//     * @return
+//     */
+//    public long getCount() throws RedisException {
+//        return getVal0();
+//    }
+
+//
+//    public void setCount(long val) throws RedisException {
+//        setVal0(val);
+//    }
 
 
-    @Deprecated
-    public long incrCount() throws RedisException {
-        long pval = Math.incrementExact(getCount());
-        setCount(pval);
-        return pval;
-    }
+//    @Deprecated
+//    public long incrCount() throws RedisException {
+//        long pval = Math.incrementExact(getCount());
+//        setCount(pval);
+//        return pval;
+//    }
+//
+//    //删除元素可用
+//    @Deprecated
+//    public long decrCount() throws RedisException {
+//        long pval = Math.decrementExact(getCount());
+//        setCount(pval);
+//        return pval;
+//    }
 
-    //删除元素可用
-    @Deprecated
-    public long decrCount() throws RedisException {
-        long pval = Math.decrementExact(getCount());
-        setCount(pval);
-        return pval;
-    }
-
-    /**
-     * TTL 过期数据处理
-     *
-     * @return
-     */
-    private long now() {
-        return System.currentTimeMillis();
-    }
-
-
-    public String info() throws RedisException {
-
-        StringBuilder sb = new StringBuilder(getKey0Str());
-
-        sb.append(":");
-        sb.append("  count=");
-        sb.append(getCount());
-
-        log.debug(sb.toString());
-
-        return sb.toString();
-    }
+//
+//    public String info() throws RedisException {
+//
+//        StringBuilder sb = new StringBuilder(getKey0Str());
+//
+//        sb.append(":");
+//        sb.append("  count=");
+//        sb.append(getCount());
+//
+//        log.debug(sb.toString());
+//
+//        return sb.toString();
+//    }
 
 
 
@@ -239,26 +228,31 @@ public class HashMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply hset(byte[] field1, byte[] value2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return integer(0);
+
+
         hset1(field1, value2);
+
+//        metaCache.put(Unpooled.wrappedBuffer(getKey0()),getMetaVal(Math.incrementExact(getCount()),-1));
 
         return integer(1);
     }
 
     public HashMeta hset1(byte[] field1, byte[] value2) throws RedisException {
         //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
-
-        if (type != -1 && type != DataType.KEY_HASH) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+//        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
+//
+//        if (type != -1 && type != DataType.KEY_HASH) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
         //数据持久化
         hashNode.genKey1(getKey0(), field1).hset(value2);
 
         //todo 增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换； setMeta(hlen().data());
 
-        MetaCountCaller taskCnt = new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_HASH_FIELD));
+        MetaCountCaller taskCnt = new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_HASH_FIELD));
         singleThreadExecutor.execute(taskCnt);
 
         return this;
@@ -288,22 +282,42 @@ public class HashMeta extends BaseMeta {
 
             log.debug("MetaCountCaller ... cnt:" + cnt);
 
+            log.debug(String.format("MetaCountCaller key=%s... cnt:%s",
+                    new String(key0),
+                    cnt));
 
-            try {
-                db.put(key0, getVal(genMetaVal(cnt)));
+            //更新缓存计数，直接修改缓存数据；
+            metaCache.put(Unpooled.wrappedBuffer(key0),getMetaVal(cnt,-1));
 
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-            } catch (RedisException e) {
-                e.printStackTrace();
-            }
+//            try {
+//                db.put(key0, getVal(genMetaVal(cnt)));
+//
+//            } catch (RocksDBException e) {
+//                e.printStackTrace();
+//            } catch (RedisException e) {
+//                e.printStackTrace();
+//            }
 
 
         }
     }
 
 
+    /**
+     *
+     * 基础方法；类型不对，不询盘提高效率；
+     *
+     * @param field1
+     * @return
+     * @throws RedisException
+     */
     public BulkReply hget(byte[] field1) throws RedisException {
+
+        //类型判定 todo 是否过期
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return NIL_REPLY;
+
+
+        //获取节点数据；批次数据Rocksdb的内置缓存处理
         HashNode node = hashNode.genKey1(getKey0(), field1).hget();
 
         if (node == null || node.data() == null) {
@@ -311,9 +325,13 @@ public class HashMeta extends BaseMeta {
         } else {
             return new BulkReply(node.getVal0());
         }
+
     }
 
     public IntegerReply hdel(byte[]... field1) throws RedisException {
+
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return integer(0);
+
 
         for (byte[] hkey : field1) {
             hashNode.genKey1(getKey0(), hkey).hdel();
@@ -326,16 +344,15 @@ public class HashMeta extends BaseMeta {
         return integer(field1.length);
     }
 
-    /**
-     * 构建子元素扫描key
-     *
-     * @param filedType
-     * @return
-     */
-    public byte[] genKeyPartten(byte[] filedType) throws RedisException {
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(NS, DataType.SPLIT, getKey0(), DataType.SPLIT, filedType, DataType.SPLIT);
-        return byteBuf.readBytes(byteBuf.readableBytes()).array();
-    }
+//    /**
+//     * 构建子元素扫描key
+//     *
+//     * @param filedType
+//     * @return
+//     */
+//    public byte[] genKeyPartten(byte[] filedType) throws RedisException {
+//        return super.genKeyPartten(filedType);
+//    }
 
     /**
      * 与keys 分开，减少内存占用；
@@ -475,12 +492,17 @@ public class HashMeta extends BaseMeta {
 
 
     public IntegerReply hlen() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return integer(0);
+
+
         Long cnt = countBy(db, genKeyPartten(DataType.KEY_HASH_FIELD));
         return integer(cnt);
     }
 
 
     public MultiBulkReply hkeys() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return EMPTY;
+
 
         List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
 
@@ -501,6 +523,8 @@ public class HashMeta extends BaseMeta {
 
 
     public IntegerReply hexists(byte[] field1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return integer(0);
+
 
         boolean exists = hashNode.genKey1(getKey0(), field1).exists();
 
@@ -508,6 +532,7 @@ public class HashMeta extends BaseMeta {
     }
 
     public MultiBulkReply hvals() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return EMPTY;
 
 
         //检索所有的 hash field key  所有的 key 都是有序的
@@ -541,6 +566,8 @@ public class HashMeta extends BaseMeta {
     }
 
     public MultiBulkReply hgetall() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return EMPTY;
+
 
         List<Reply<ByteBuf>> replies = new ArrayList<Reply<ByteBuf>>();
 
@@ -557,7 +584,7 @@ public class HashMeta extends BaseMeta {
                 byte[] f = hashNode.parseHField(getKey0(), bt);
 
                 //ByteBuf hkeybuf1 = Unpooled.wrappedBuffer(bt); //优化 零拷贝
-                //ByteBuf slice = hkeybuf1.slice(3+NS.length + getKey0().length+TYPE.length, bt.length - 3 -NS.length - getKey0().length -TYPE.length);
+                //ByteBuf slice = hkeybuf1.slice(3+NS.length + getKey0().length+KEYTYPE.length, bt.length - 3 -NS.length - getKey0().length -KEYTYPE.length);
                 //byte[] f = slice.readBytes(slice.readableBytes()).array();
 
                 replies.add(new BulkReply(f));
@@ -573,6 +600,8 @@ public class HashMeta extends BaseMeta {
 
 
     public IntegerReply hincrby(byte[] field1, byte[] increment2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return integer(0);
+
         long incr = bytesToNum(increment2);
 
         BulkReply field = hget(field1);
@@ -594,6 +623,8 @@ public class HashMeta extends BaseMeta {
     }
 
     public BulkReply hincrbyfloat(byte[] field1, byte[] increment2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return NIL_REPLY;
+
 
         double incr = parseDouble(new String(increment2));
         BulkReply field = hget(field1);
@@ -617,6 +648,7 @@ public class HashMeta extends BaseMeta {
 
 
     public MultiBulkReply hmget(byte[]... field1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return EMPTY;
 
 
         List<byte[]> listFds = new ArrayList<byte[]>();
@@ -634,6 +666,9 @@ public class HashMeta extends BaseMeta {
 
 
     public StatusReply hmset(byte[]... field_or_value1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return QUIT;
+
+
         if (field_or_value1.length % 2 != 0) {
             throw new RedisException("wrong number of arguments for HMSET");
         }
@@ -649,6 +684,7 @@ public class HashMeta extends BaseMeta {
     }
 
     public IntegerReply hsetnx(byte[] field1, byte[] value2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_HASH)) return integer(0);
 
         if (hexists(field1).data() == 0) {
             return integer(0);
@@ -660,109 +696,14 @@ public class HashMeta extends BaseMeta {
     }
 
 
+
+
+
+
+
     public static void main(String[] args) throws Exception {
-//        testHash();
 
     }
 
-//    /**
-//     * Hash数据集测试
-//     *
-//     * @throws RedisException
-//     */
-//    private static void testHash() throws RedisException, InterruptedException {
-//
-//        HashMeta meta9 = HashMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-//        //测试删除
-//        meta9.genMetaKey("HashUpdate".getBytes()).deleteRange(meta9.getKey0());
-////        log.debug("hkeys0:"+meta9.members());
-//
-//
-////        log.debug(meta9.hget("f1".getBytes()));
-//        Assert.assertNull(meta9.hget("f1".getBytes()).asUTF8String());
-//
-//        meta9.genMetaKey("HashUpdate".getBytes()).hset("f1".getBytes(), "v1".getBytes());
-////        log.debug(meta9.hget("f1".getBytes()));
-//        Assert.assertEquals("v1", meta9.hget("f1".getBytes()).asUTF8String());
-//
-//        Thread.sleep(500);
-//
-////        log.debug("cnt:"+meta9.getCount());
-//        Assert.assertEquals(1, meta9.getMeta().getCount());
-//
-//
-//        meta9.genMetaKey("HashUpdate".getBytes()).hset("f2".getBytes(), "v2".getBytes());
-//
-//        Thread.sleep(500);
-//
-////        log.debug("val:"+meta9.getVal0());
-//        Assert.assertEquals(2, meta9.getMeta().getCount());
-//
-////        log.debug("hkeys9:"+meta9.members());
-////        log.debug("hvals:"+meta9.hvals());
-////        log.debug("hgetall:"+meta9.hgetall());
-////        log.debug("hmget:"+meta9.hmget("f1".getBytes(),"f2".getBytes()));
-//
-//
-//        //引入
-//
-//        HashMeta meta2 = HashMeta.getInstance(RocksdbRedis.mydata, "TEST1".getBytes());
-//        meta2.genMetaKey("BATCH".getBytes()).deleteRange(meta2.getKey0());
-//
-//
-//        byte[] f1 = "f1".getBytes();
-//        byte[] f2 = "f2".getBytes();
-//
-//        byte[] v1 = "v1".getBytes();
-//        byte[] v2 = "v2".getBytes();
-//
-//        byte[] f3 = "f3".getBytes();
-//        byte[] f4 = "f4".getBytes();
-//
-//        byte[] v3 = "v3".getBytes();
-//        byte[] v4 = "v4".getBytes();
-//
-////        log.debug("hkeys0:"+meta2.genMetaKey("BATCH".getBytes()).members());
-////        log.debug("hkeys1:"+meta2.members());
-////        log.debug("hlens1:"+meta2.hlen().data().longValue());
-//
-//        meta2.genMetaKey("BATCH".getBytes()).hset1(f1, v1).hset1(f2, v2);
-//
-//        Thread.sleep(500);
-//
-////        log.debug("hkeys2:"+meta2.members());
-////        log.debug("hlens2:"+meta2.hlen().data().longValue());
-//
-//        Assert.assertArrayEquals(meta2.hget(f1).data().array(), v1);
-//        Assert.assertArrayEquals(meta2.hget(f2).data().array(), v2);
-//        Assert.assertEquals(meta2.hlen().data().longValue(), 2);
-//
-//        meta2.hdel(f2);
-//        Assert.assertNull(meta2.hget(f2).data());
-//        Assert.assertEquals(meta2.hlen().data().longValue(), 1);
-//
-//
-//        meta2.hmset(f3, v3, f4, v4);
-//        Assert.assertEquals(meta2.hlen().data().longValue(), 3);
-//
-//        String[] strings3 = {"v1", "v3"};
-//        Assert.assertEquals(meta2.hmget(f1, f3).toString(), Arrays.asList(strings3).toString());
-//
-//        String[] strings4 = {"f1", "v1", "f3", "v3", "f4", "v4"};
-//        Assert.assertEquals(meta2.hgetall().toString(), Arrays.asList(strings4).toString());
-//
-//        Assert.assertTrue(meta2.hexists("f1".getBytes()).data().intValue() == 1);
-//
-//        Assert.assertTrue(meta2.hincrby("f8".getBytes(), "1".getBytes()).data().intValue() == 1);
-//
-//        Assert.assertArrayEquals(meta2.hget("f8".getBytes()).data().array(), "1".getBytes());
-//
-//        String[] strings5 = {"v1", "v3", "v4", "1"};
-//
-//        Assert.assertEquals(meta2.hvals().toString(), Arrays.asList(strings5).toString());
-//
-//        log.debug("Over ... ...");
-//
-//    }
 
 }

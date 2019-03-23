@@ -3,13 +3,133 @@ package json;
 import com.google.common.base.Strings;
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
 import org.apache.log4j.Logger;
 import org.junit.Test;
+import org.supermy.util.MyUtils;
+import org.xerial.snappy.Snappy;
 
+import java.io.IOException;
 import java.util.*;
 
 public class GsonTest {
     private static Logger log = Logger.getLogger(GsonTest.class);
+
+    /**
+     *
+     * JsonPath 解析效率更高
+     *
+     * 21:47:56,102 DEBUG GsonTest:54 - Gson 序列化，contains 100000 个时间1583毫秒;平均单个value(0.17KB)contains时间：15902纳秒
+     * 21:48:05,735 DEBUG GsonTest:71 - Gson 序列化，contains 100000 个时间9626毫秒;平均单个value(6.23KB)contains时间：96262纳秒
+     * 21:48:06,149 DEBUG GsonTest:97 - Gson 序列化，contains 100000 个时间404毫秒;平均单个value(0.17KB)contains时间：4041纳秒
+     * 21:48:14,410 DEBUG GsonTest:115 - Gson 序列化，contains 100000 个时间8260毫秒;平均单个value(6.23KB)contains时间：82602纳秒
+     *
+     *
+     * 21:50:09,555 DEBUG GsonTest:50 - Gson 序列化，contains 100000 个时间839毫秒;平均单个value(0.17KB)contains时间：8552纳秒
+     * 21:50:16,273 DEBUG GsonTest:67 - Gson 序列化，contains 100000 个时间6706毫秒;平均单个value(6.23KB)contains时间：67062纳秒
+     * 21:50:16,469 DEBUG GsonTest:93 - JsonPath 序列化，contains 100000 个时间195毫秒;平均单个value(0.17KB)contains时间：1953纳秒
+     * 21:50:19,928 DEBUG GsonTest:111 - JsonPath 序列化，contains 100000 个时间3458毫秒;平均单个value(6.23KB)contains时间：34588纳秒
+     *
+     */
+    @Test
+    public void benchmark() throws IOException {
+//        Gson gson3 = new GsonBuilder().enableComplexMapKeySerialization().create(); //开启复杂处理Map方法
+        Gson gson3 = new Gson();
+
+
+        long count = 100000;
+
+        {
+            long start0=System.nanoTime();
+
+            String ts="{" +
+                    "  \"title\": \"Java Puzzlers: Traps, Pitfalls, and Corner Cases\"," +
+                    "  \"isbn-10\": \"032133678X\"," +
+                    "  \"isbn-13\": \"978-0321336781\"," +
+                    "  \"authors\": [" +
+                    "    \"Joshua Bloch\"," +
+                    "    \"Neal Gafter\"" +
+                    "  ]" +
+                    "}";
+            for (int i = 0; i <count ; i++) {
+                JsonObject jsonObject = gson3.fromJson(ts, JsonObject.class);
+//                jsonObject.toString();
+            }
+
+            log.debug(String.format("Gson 序列化，contains %s 个时间%s毫秒;平均单个value(%s)contains时间：%s纳秒",
+                    count,
+                    (System.nanoTime() - start0) / 1000 / 1000,
+                    MyUtils.bytes2kb(ts.length()),
+                    (System.nanoTime() - start0)  / count));
+
+        }
+
+        {
+            long start0=System.nanoTime();
+
+            String ts2="{\"company\":{\"aliwwStatus\":0,\"id\":0,\"name\":\"红茄子印像\",\"sellerId\":\"1000000301\",\"trustScore\":0},\"count\":5,\"pagecount\":0,\"pageindex\":0,\"resultList\":[{\"atoms\":[{\"bankImage\":true,\"height\":300,\"imageURL\":\"http://web.tcloudapp.cn/temp/1000000001/18C3C7410D9B1E5B964E0BAA6268053A727510F2CAC5E70E72C3C7DE48AE1.jpg_640x400.jpg\",\"style\":0,\"title\":\"\",\"uIActionParams\":{},\"versionCode\":0,\"width\":640},{\"bankImage\":true,\"height\":300,\"imageURL\":\"http://web.tcloudapp.cn/temp/1000000001/1B0F08D14F1F793842AC87B17003C52AE408D8FCFD26628EF83E65C3CFFD2.jpg_640x400.jpg\",\"style\":0,\"title\":\"\",\"uIActionParams\":{},\"versionCode\":0,\"width\":640},{\"bankImage\":true,\"height\":300,\"imageURL\":\"http://web.tcloudapp.cn/temp/1000000001/5857874C9779EF6EFCAC9FD55702FA4D0EE5522F035F2E14A9972CC955123.jpg_640x400.jpg\",\"style\":0,\"title\":\"\",\"uIActionParams\":{},\"versionCode\":0,\"width\":640}],\"height\":300,\"type\":\"slides\",\"versionCode\":0,\"width\":640},{\"atoms\":[{\"action\":\"go_to_search\",\"bankImage\":true,\"colorBackground\":\"#333333\",\"height\":100,\"style\":1,\"title\":\"人气宝贝\",\"uIActionParams\":{\"offerRequest\":{\"beginPage\":0,\"companyId\":1000000301,\"deliveryFree\":false,\"descendOrder\":true,\"discount\":false,\"pageSize\":0,\"pop\":false,\"priceEnabled\":false,\"priceEnd\":3.4028235E38,\"priceStart\":0,\"sortType\":\"renqi\"}},\"versionCode\":0,\"width\":640}],\"height\":100,\"type\":\"channel_item\",\"versionCode\":0,\"width\":640},{\"atoms\":[{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img03.taobaocdn.com/bao/uploaded/i3/T1OdxDXXtvXXcWWv_a_090851.jpg_250x250.jpg\",\"offerId\":102077,\"originalPrice\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时包邮 8*8照片书|相册影集|婴儿|宝宝|儿童/diy定制|制作 简单\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img05.taobaocdn.com/bao/uploaded/i5/T1w9NDXipxXXay20Q4_052428.jpg_250x250.jpg\",\"offerId\":102076,\"originalPrice\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时包邮 8*8照片书|相册影集|婴儿|宝宝|儿童/diy定制|制作 D调\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img06.taobaocdn.com/bao/uploaded/i6/T1hIRDXalGXXa_aivX_085522.jpg_250x250.jpg\",\"offerId\":102075,\"originalPrice\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时包邮 8*8照片书|相册影集|婴儿|宝宝|儿童/diy定制|制作 青春\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img01.taobaocdn.com/bao/uploaded/i1/T1GyuyXjxDXXcE22E8_100415.jpg_250x250.jpg\",\"offerId\":102074,\"originalPrice\":{\"amount\":158.00,\"cent\":15800,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":158.00,\"cent\":15800,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"马伊琍同款项链 蝴蝶 正品925纯银 假一罰十 DIY字母名字项链定做\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img02.taobaocdn.com/bao/uploaded/i2/T1Uw4IXmRyXXayTOM6_062232.jpg_250x250.jpg\",\"offerId\":102073,\"originalPrice\":{\"amount\":158.00,\"cent\":15800,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":158.00,\"cent\":15800,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"马伊琍同款项链 爱心天使 正品925纯银 假一罰十 DIY名字项链定做\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img08.taobaocdn.com/bao/uploaded/i8/T1vElPXcFEXXb6e.34_054443.jpg_250x250.jpg\",\"offerId\":102072,\"originalPrice\":{\"amount\":238.00,\"cent\":23800,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":238.00,\"cent\":23800,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"包邮！银条男士项链 正品925纯银刻字 实心项链 DIY刻字项链定做\",\"versionCode\":0,\"volume\":0,\"width\":213}],\"height\":578,\"type\":\"offer_item\",\"versionCode\":0,\"width\":640},{\"atoms\":[{\"action\":\"go_to_search\",\"bankImage\":true,\"colorBackground\":\"#333333\",\"height\":100,\"style\":1,\"title\":\"最新上市\",\"uIActionParams\":{\"offerRequest\":{\"beginPage\":0,\"companyId\":1000000301,\"deliveryFree\":false,\"descendOrder\":true,\"discount\":false,\"pageSize\":0,\"pop\":false,\"priceEnabled\":false,\"priceEnd\":3.4028235E38,\"priceStart\":0,\"sortType\":\"time\"}},\"versionCode\":0,\"width\":640}],\"height\":100,\"type\":\"channel_item\",\"versionCode\":0,\"width\":640},{\"atoms\":[{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img01.taobaocdn.com/bao/uploaded/i1/T17OxOXi0yXXau1o75_060407.jpg_250x250.jpg\",\"offerId\":102041,\"originalPrice\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时抢购 跨年台历定制/照片定做/制作/挂历/日历 8寸25页\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img08.taobaocdn.com/bao/uploaded/i8/T12yhOXh0EXXXfz.I5_060343.jpg_250x250.jpg\",\"offerId\":102042,\"originalPrice\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时抢购 跨年台历定制/照片定做/制作/挂历/日历 8寸25页 宝宝\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img05.taobaocdn.com/bao/uploaded/i5/T1fpx1XfdoXXcDATUZ_033624.jpg_250x250.jpg\",\"offerId\":102043,\"originalPrice\":{\"amount\":44.80,\"cent\":4480,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":44.80,\"cent\":4480,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时秒杀 8x6画册|相册/照片书/影集|宝宝儿童/diy定制|制作 生活\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img06.taobaocdn.com/bao/uploaded/i6/T1jyVOXntsXXaQrU35_060401.jpg_250x250.jpg\",\"offerId\":102044,\"originalPrice\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时抢购 跨年台历定制/照片定做/制作/挂历/日历 8寸25页 看海\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img01.taobaocdn.com/bao/uploaded/i1/T1yrX1XjJbXXcDvJfa_090502.jpg_250x250.jpg\",\"offerId\":102045,\"originalPrice\":{\"amount\":44.80,\"cent\":4480,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":44.80,\"cent\":4480,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时秒杀 8x6画册|相册/照片书/影集|宝宝儿童/diy定制|制作 曾经\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img05.taobaocdn.com/bao/uploaded/i5/T1rUROXcNAXXX_AA.6_062529.jpg_250x250.jpg\",\"offerId\":102046,\"originalPrice\":{\"amount\":39.59,\"cent\":3959,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":39.59,\"cent\":3959,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"卖疯了！国际一级白瓷！个性水杯定制 印图照片 情侣马克杯 春日\",\"versionCode\":0,\"volume\":0,\"width\":213}],\"height\":578,\"type\":\"offer_item\",\"versionCode\":0,\"width\":640}],\"totalCount\":0}\n";
+            for (int i = 0; i < count; i++) {
+                JsonObject jsonObject2 = gson3.fromJson(ts2, JsonObject.class);
+//                jsonObject2.toString();
+
+            }
+            log.debug(String.format("Gson 序列化，contains %s 个时间%s毫秒;平均单个value(%s/%s压缩后)contains时间：%s纳秒",
+                    count,
+                    (System.nanoTime() - start0) / 1000 / 1000,
+                    MyUtils.bytes2kb(ts2.length()),
+                    MyUtils.bytes2kb(Snappy.compress(ts2).length),
+                    (System.nanoTime() - start0)  / count));
+
+        }
+
+
+        {
+            long start0=System.nanoTime();
+
+            String ts="{" +
+                    "  \"title\": \"Java Puzzlers: Traps, Pitfalls, and Corner Cases\"," +
+                    "  \"isbn-10\": \"032133678X\"," +
+                    "  \"isbn-13\": \"978-0321336781\"," +
+                    "  \"authors\": [" +
+                    "    \"Joshua Bloch\"," +
+                    "    \"Neal Gafter\"" +
+                    "  ]" +
+                    "}";
+            for (int i = 0; i <count ; i++) {
+                DocumentContext ext = JsonPath.parse(ts);
+//                ext.jsonString();
+            }
+
+            log.debug(String.format("JsonPath 序列化，contains %s 个时间%s毫秒;平均单个value(%s)contains时间：%s纳秒",
+                    count,
+                    (System.nanoTime() - start0) / 1000 / 1000,
+                    MyUtils.bytes2kb(ts.length()),
+                    (System.nanoTime() - start0)  / count));
+
+        }
+
+
+        {
+            long start0=System.nanoTime();
+
+            String ts2="{\"company\":{\"aliwwStatus\":0,\"id\":0,\"name\":\"红茄子印像\",\"sellerId\":\"1000000301\",\"trustScore\":0},\"count\":5,\"pagecount\":0,\"pageindex\":0,\"resultList\":[{\"atoms\":[{\"bankImage\":true,\"height\":300,\"imageURL\":\"http://web.tcloudapp.cn/temp/1000000001/18C3C7410D9B1E5B964E0BAA6268053A727510F2CAC5E70E72C3C7DE48AE1.jpg_640x400.jpg\",\"style\":0,\"title\":\"\",\"uIActionParams\":{},\"versionCode\":0,\"width\":640},{\"bankImage\":true,\"height\":300,\"imageURL\":\"http://web.tcloudapp.cn/temp/1000000001/1B0F08D14F1F793842AC87B17003C52AE408D8FCFD26628EF83E65C3CFFD2.jpg_640x400.jpg\",\"style\":0,\"title\":\"\",\"uIActionParams\":{},\"versionCode\":0,\"width\":640},{\"bankImage\":true,\"height\":300,\"imageURL\":\"http://web.tcloudapp.cn/temp/1000000001/5857874C9779EF6EFCAC9FD55702FA4D0EE5522F035F2E14A9972CC955123.jpg_640x400.jpg\",\"style\":0,\"title\":\"\",\"uIActionParams\":{},\"versionCode\":0,\"width\":640}],\"height\":300,\"type\":\"slides\",\"versionCode\":0,\"width\":640},{\"atoms\":[{\"action\":\"go_to_search\",\"bankImage\":true,\"colorBackground\":\"#333333\",\"height\":100,\"style\":1,\"title\":\"人气宝贝\",\"uIActionParams\":{\"offerRequest\":{\"beginPage\":0,\"companyId\":1000000301,\"deliveryFree\":false,\"descendOrder\":true,\"discount\":false,\"pageSize\":0,\"pop\":false,\"priceEnabled\":false,\"priceEnd\":3.4028235E38,\"priceStart\":0,\"sortType\":\"renqi\"}},\"versionCode\":0,\"width\":640}],\"height\":100,\"type\":\"channel_item\",\"versionCode\":0,\"width\":640},{\"atoms\":[{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img03.taobaocdn.com/bao/uploaded/i3/T1OdxDXXtvXXcWWv_a_090851.jpg_250x250.jpg\",\"offerId\":102077,\"originalPrice\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时包邮 8*8照片书|相册影集|婴儿|宝宝|儿童/diy定制|制作 简单\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img05.taobaocdn.com/bao/uploaded/i5/T1w9NDXipxXXay20Q4_052428.jpg_250x250.jpg\",\"offerId\":102076,\"originalPrice\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时包邮 8*8照片书|相册影集|婴儿|宝宝|儿童/diy定制|制作 D调\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img06.taobaocdn.com/bao/uploaded/i6/T1hIRDXalGXXa_aivX_085522.jpg_250x250.jpg\",\"offerId\":102075,\"originalPrice\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":119.30,\"cent\":11930,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时包邮 8*8照片书|相册影集|婴儿|宝宝|儿童/diy定制|制作 青春\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img01.taobaocdn.com/bao/uploaded/i1/T1GyuyXjxDXXcE22E8_100415.jpg_250x250.jpg\",\"offerId\":102074,\"originalPrice\":{\"amount\":158.00,\"cent\":15800,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":158.00,\"cent\":15800,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"马伊琍同款项链 蝴蝶 正品925纯银 假一罰十 DIY字母名字项链定做\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img02.taobaocdn.com/bao/uploaded/i2/T1Uw4IXmRyXXayTOM6_062232.jpg_250x250.jpg\",\"offerId\":102073,\"originalPrice\":{\"amount\":158.00,\"cent\":15800,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":158.00,\"cent\":15800,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"马伊琍同款项链 爱心天使 正品925纯银 假一罰十 DIY名字项链定做\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img08.taobaocdn.com/bao/uploaded/i8/T1vElPXcFEXXb6e.34_054443.jpg_250x250.jpg\",\"offerId\":102072,\"originalPrice\":{\"amount\":238.00,\"cent\":23800,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":238.00,\"cent\":23800,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"包邮！银条男士项链 正品925纯银刻字 实心项链 DIY刻字项链定做\",\"versionCode\":0,\"volume\":0,\"width\":213}],\"height\":578,\"type\":\"offer_item\",\"versionCode\":0,\"width\":640},{\"atoms\":[{\"action\":\"go_to_search\",\"bankImage\":true,\"colorBackground\":\"#333333\",\"height\":100,\"style\":1,\"title\":\"最新上市\",\"uIActionParams\":{\"offerRequest\":{\"beginPage\":0,\"companyId\":1000000301,\"deliveryFree\":false,\"descendOrder\":true,\"discount\":false,\"pageSize\":0,\"pop\":false,\"priceEnabled\":false,\"priceEnd\":3.4028235E38,\"priceStart\":0,\"sortType\":\"time\"}},\"versionCode\":0,\"width\":640}],\"height\":100,\"type\":\"channel_item\",\"versionCode\":0,\"width\":640},{\"atoms\":[{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img01.taobaocdn.com/bao/uploaded/i1/T17OxOXi0yXXau1o75_060407.jpg_250x250.jpg\",\"offerId\":102041,\"originalPrice\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时抢购 跨年台历定制/照片定做/制作/挂历/日历 8寸25页\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img08.taobaocdn.com/bao/uploaded/i8/T12yhOXh0EXXXfz.I5_060343.jpg_250x250.jpg\",\"offerId\":102042,\"originalPrice\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时抢购 跨年台历定制/照片定做/制作/挂历/日历 8寸25页 宝宝\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img05.taobaocdn.com/bao/uploaded/i5/T1fpx1XfdoXXcDATUZ_033624.jpg_250x250.jpg\",\"offerId\":102043,\"originalPrice\":{\"amount\":44.80,\"cent\":4480,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":44.80,\"cent\":4480,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时秒杀 8x6画册|相册/照片书/影集|宝宝儿童/diy定制|制作 生活\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img06.taobaocdn.com/bao/uploaded/i6/T1jyVOXntsXXaQrU35_060401.jpg_250x250.jpg\",\"offerId\":102044,\"originalPrice\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":46.80,\"cent\":4680,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时抢购 跨年台历定制/照片定做/制作/挂历/日历 8寸25页 看海\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img01.taobaocdn.com/bao/uploaded/i1/T1yrX1XjJbXXcDvJfa_090502.jpg_250x250.jpg\",\"offerId\":102045,\"originalPrice\":{\"amount\":44.80,\"cent\":4480,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":44.80,\"cent\":4480,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"限时秒杀 8x6画册|相册/照片书/影集|宝宝儿童/diy定制|制作 曾经\",\"versionCode\":0,\"volume\":0,\"width\":213},{\"bankImage\":true,\"height\":289,\"imageURL\":\"http://img05.taobaocdn.com/bao/uploaded/i5/T1rUROXcNAXXX_AA.6_062529.jpg_250x250.jpg\",\"offerId\":102046,\"originalPrice\":{\"amount\":39.59,\"cent\":3959,\"currencyCode\":\"CNY\"},\"price\":{\"amount\":39.59,\"cent\":3959,\"currencyCode\":\"CNY\"},\"style\":0,\"title\":\"卖疯了！国际一级白瓷！个性水杯定制 印图照片 情侣马克杯 春日\",\"versionCode\":0,\"volume\":0,\"width\":213}],\"height\":578,\"type\":\"offer_item\",\"versionCode\":0,\"width\":640}],\"totalCount\":0}\n";
+            for (int i = 0; i < count; i++) {
+                DocumentContext ext = JsonPath.parse(ts2);
+//                ext.jsonString();
+
+            }
+            log.debug(String.format("JsonPath 序列化，contains %s 个时间%s毫秒;平均单个value(%s/%s压缩后)contains时间：%s纳秒",
+                    count,
+                    (System.nanoTime() - start0) / 1000 / 1000,
+                    MyUtils.bytes2kb(ts2.length()),
+                    MyUtils.bytes2kb(Snappy.compress(ts2).length),
+                    (System.nanoTime() - start0)  / count));
+
+        }
+
+
+    }
 
     /**
      * JsonElement的四个子类:JsonObject、JsonArray、JsonPrimitive、JsonNull

@@ -6,6 +6,7 @@ import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.rocksdb.*;
+import org.supermy.util.MyUtils;
 import redis.netty4.BulkReply;
 import redis.netty4.IntegerReply;
 import redis.netty4.MultiBulkReply;
@@ -15,10 +16,12 @@ import redis.server.netty.utis.DataType;
 
 import java.nio.charset.Charset;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
+import static redis.netty4.MultiBulkReply.EMPTY;
 import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 import static redis.server.netty.rocksdb.RedisBase.notInteger;
 import static redis.server.netty.rocksdb.RocksdbRedis._toint;
@@ -71,6 +74,7 @@ public class ZSetMeta extends BaseMeta {
     public static ZSetMeta getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
+        instance.VAlTYPE = DataType.KEY_ZSET;
         zsetScoreNode = ZSetScoreNode.getInstance(db0, ns0);
         zsetRankNode = ZSetRankNode.getInstance(db0, ns0);
         return instance;
@@ -83,145 +87,138 @@ public class ZSetMeta extends BaseMeta {
      * @return
      * @throws RedisException
      */
+    @Deprecated
     public ZSetMeta genMetaKey(byte[] key0) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("key0 主键不能为空"));
         }
-        instance.metaKey = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        instance.metaKey =  MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
         return instance;
     }
 
-    /**
-     * 保存元素数量
-     * 保存score 范围 1,20
-     *
-     * @param count
-     * @return
-     */
-    private ByteBuf genMetaVal(long count) {
-        ByteBuf val = Unpooled.buffer(8);
+//    /**
+//     * 保存元素数量
+//     * 保存score 范围 1,20
+//     *
+//     * @param count
+//     * @return
+//     */
+//    private ByteBuf genMetaVal(long count) {
+//        ByteBuf val = Unpooled.buffer(8);
+//
+//        val.writeLong(-1); //ttl 无限期 -1
+//        val.writeBytes(DataType.SPLIT);
+//
+//        val.writeInt(DataType.KEY_ZSET); //long 8 bit
+//        val.writeBytes(DataType.SPLIT);
+//
+//        val.writeLong(count);  //数量
+////        val.writeBytes(DataType.SPLIT);
+//
+//        return val;
+//    }
 
-        val.writeLong(-1); //ttl 无限期 -1
-        val.writeBytes(DataType.SPLIT);
+//    /**
+//     * 创建meta key
+//     *
+//     * @param count
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected ZSetMeta setMeta(long count) throws RedisException {
+//
+//        this.metaVal = genMetaVal(count);
+//
+//        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
+//
+//        try {
+//            db.put(getKey(), getVal());//fixme
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
 
-        val.writeInt(DataType.KEY_ZSET); //long 8 bit
-        val.writeBytes(DataType.SPLIT);
-
-        val.writeLong(count);  //数量
-        val.writeBytes(DataType.SPLIT);
-
-        return val;
-    }
-
-    /**
-     * 创建meta key
-     *
-     * @param count
-     * @return
-     * @throws RedisException
-     */
-    protected ZSetMeta setMeta(long count) throws RedisException {
-
-        this.metaVal = genMetaVal(count);
-
-        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
-
-        try {
-            db.put(getKey(), getVal());//fixme
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
-
-    /**
-     * 获取meta 数据
-     *
-     * @return
-     * @throws RedisException
-     */
-    protected ZSetMeta getMeta() throws RedisException {
-
-        try {
-            byte[] value = db.get(getKey());
-            if (value == null) this.metaVal = null;
-            else
-                this.metaVal = Unpooled.wrappedBuffer(value);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
-
-
-    public long getVal0() throws RedisException {
-        return metaVal.getLong(8 + 4 + 2);
-    }
-
-    public void setVal0(long val0) throws RedisException {
-        this.metaVal.setLong(8 + 4 + 2, val0);  //数量
-    }
-
-    public byte[] getVal() throws RedisException {
-        this.metaVal.resetReaderIndex();
-        return this.metaVal.readBytes(metaVal.readableBytes()).array();
-    }
-
-    public byte[] getVal(ByteBuf val) throws RedisException {
-        val.resetReaderIndex();
-        return val.readBytes(val.readableBytes()).array();
-    }
-
-    public long getTtl() {
-        return metaVal.getLong(0);
-    }
-
-    public int getType() throws RedisException {
-        if (metaVal == null) return -1;
-        return this.metaVal.getInt(8 + 1);
-    }
-
-    /**
-     * 元素数量
-     *
-     * @return
-     */
-    public long getCount() throws RedisException {
-        return getVal0();
-    }
+// 重构之后走缓存创建，缓存获取
+//    /**
+//     * 获取meta 数据
+//     *
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected ZSetMeta getMeta() throws RedisException {
+//
+//        try {
+//            byte[] value = db.get(getKey());
+//            if (value == null) this.metaVal = null;
+//            else
+//                this.metaVal = Unpooled.wrappedBuffer(value);
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
 
 
-    public void setCount(long val) throws RedisException {
-        setVal0(val);
-    }
+//    public long getVal0() throws RedisException {
+////        log.debug(MyUtils.ByteBuf2String(metaVal));
+////        log.debug(metaVal.array().length);
+////        try {
+////            log.debug(new String(db.get("redis|ZSet|1".getBytes())));
+////        } catch (RocksDBException e) {
+////            e.printStackTrace();
+////        }
+////        metaVal.resetReaderIndex();
+//        return metaVal.getLong(8 + 4 + 2);
+//    }
+
+//    public void setVal0(long val0) throws RedisException {
+//        this.metaVal.setLong(8 + 4 + 2, val0);  //数量
+//    }
+
+//    public byte[] getVal() throws RedisException {
+//        this.metaVal.resetReaderIndex();
+//        return this.metaVal.readBytes(metaVal.readableBytes()).array();
+//    }
+
+//    public byte[] getVal(ByteBuf val) throws RedisException {
+//        val.resetReaderIndex();
+//        return val.readBytes(val.readableBytes()).array();
+//    }
+
+//    public long getTtl() {
+//        return metaVal.getLong(0);
+//    }
+//
+//    public int getType() throws RedisException {
+//        if (metaVal == null) return -1;
+//        return this.metaVal.getInt(8 + 1);
+//    }
 
 
-    /**
-     * TTL 过期数据处理
-     *
-     * @return
-     */
-    private long now() {
-        return System.currentTimeMillis();
-    }
+//    public void setCount(long val) throws RedisException {
+//        setVal0(val);
+//    }
 
 
-    public String info() throws RedisException {
 
-        StringBuilder sb = new StringBuilder(getKey0Str());
-
-        sb.append(":");
-        sb.append("  count=");
-        sb.append(getCount());
-
-        log.debug(sb.toString());
-
-        return sb.toString();
-    }
+//
+//    public String info() throws RedisException {
+//
+//        StringBuilder sb = new StringBuilder(getKey0Str());
+//
+//        sb.append(":");
+//        sb.append("  count=");
+//        sb.append(getCount());
+//
+//        log.debug(sb.toString());
+//
+//        return sb.toString();
+//    }
 
 
     /**
@@ -245,33 +242,25 @@ public class ZSetMeta extends BaseMeta {
 
             long cnt = countBy(db, keyPartten);
 
-            log.debug("MetaCountCaller ... cnt:" + cnt);
+            log.debug(String.format("MetaCountCaller key=%s... cnt:%s",
+                    new String(key0),
+                    cnt));
+            //更新缓存计数，直接修改缓存数据；
+            metaCache.put(Unpooled.wrappedBuffer(key0),getMetaVal(cnt,-1));
+//            metaCache.invalidate(Unpooled.wrappedBuffer(key0));//持久化到rocksdb
 
-
-            try {
-                db.put(key0, getVal(genMetaVal(cnt)));
-
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-            } catch (RedisException e) {
-                e.printStackTrace();
-            }
+//            try {
+//                db.put(key0, MyUtils.toByteArray(getMetaVal(cnt,-1)));
+//            } catch (RocksDBException e) {
+//                e.printStackTrace();
+//            } catch (ExecutionException e) {
+//                e.printStackTrace();
+//            }
 
 
         }
     }
 
-
-    /**
-     * 构建子元素扫描key
-     *
-     * @param filedType
-     * @return
-     */
-    public byte[] genKeyPartten(byte[] filedType) throws RedisException {
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(NS, DataType.SPLIT, getKey0(), DataType.SPLIT, filedType, DataType.SPLIT);
-        return byteBuf.readBytes(byteBuf.readableBytes()).array();
-    }
 
     /**
      * 与keys 分开，减少内存占用；
@@ -605,7 +594,7 @@ public class ZSetMeta extends BaseMeta {
 //            try {
 //
 //                //delete member
-//                db.deleteRange(begin, end);
+//                db.clearMetaDataNodeData(begin, end);
 //
 //                //delete sort=score+member
 //                for (byte[] key : dellist
@@ -771,6 +760,8 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zcard() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
+
         long cnt = countBy(db, genKeyPartten(DataType.KEY_ZSET_SCORE));//fixme 优化，从meta 获取数量
 //        log.debug("元素数量："+getMeta().getCount());
 //        log.debug("元素数量："+cnt);
@@ -791,6 +782,8 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zcount(byte[] min1, byte[] max2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
+
         if (min1 == null || max2 == null) {
             throw new RedisException("wrong number of arguments for 'zcount' command");
         }
@@ -819,28 +812,35 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public BulkReply zincrby(byte[] increment1, byte[] member2) throws RedisException {
+        log.debug("zincrby--------------------");
 
-        //判断类型，非hash 类型返回异常信息；
-        int type = genMetaKey(getKey0()).getMeta().getType();
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return NIL_REPLY;
 
-        if (type != -1 && type != DataType.KEY_ZSET) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+//
+//        //判断类型，非hash 类型返回异常信息；
+//        int type = genMetaKey(getKey0()).getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_ZSET) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
         BulkReply zscore = zscore(member2);
         if (zscore.isEmpty()) {
             //新增
-            genMetaKey(getKey0()).zadd(increment1, member2);
+            metaKey=getMetaKey(getKey0());
+            zadd(increment1, member2);
             return new BulkReply(increment1);
         } else {
             //修改分数 注意修改两个数据
             zscore.data();
-            long score = bytesToNum(getVal(zscore.data()));
+            long score = bytesToNum(MyUtils.toByteArray(zscore.data()));
             long incr = bytesToNum(increment1);
             byte[] dest = numToBytes(score + incr);
-            genMetaKey(getKey0()).zrem(member2);
-            genMetaKey(getKey0()).zadd(dest, member2);
+            metaKey=getMetaKey(getKey0());
+            zrem(member2);
+            metaKey=getMetaKey(getKey0());
+            zadd(dest, member2);
             return new BulkReply(dest);
         }
 
@@ -861,6 +861,7 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zinterstore(byte[] destination0, byte[] numkeys1, byte[][] key2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
 
         return _zstore(destination0, numkeys1, key2, "zinterstore", false);
     }
@@ -981,6 +982,8 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zlexcount(byte[] min1, byte[] max2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
+
         if (min1 == null || max2 == null) {
             throw new RedisException("wrong number of arguments for 'zcount' command");
         }
@@ -1003,6 +1006,8 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public BulkReply zscore(byte[] member1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return NIL_REPLY;
+
 
         ZSetScoreNode zscore = zsetScoreNode.genKey(getKey0(), member1).zscore();
 
@@ -1031,6 +1036,8 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zunionstore(byte[] destination0, byte[] numkeys1, byte[][] key2) throws RedisException {
+//        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
+
 //        return _zstore(destination0, numkeys1, key2, "zunionstore", true);
         return null;
     }
@@ -1045,6 +1052,8 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public Reply zrank(byte[] member1) throws RedisException {
+        log.debug("zrank--------------------");
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return NIL_REPLY;
 
         int sort = zsortBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), member1);
         if (sort == -1) {
@@ -1069,11 +1078,16 @@ public class ZSetMeta extends BaseMeta {
      */
 
     public Reply zrevrank(byte[] member1) throws RedisException {
+        log.debug("zrevrank--------------------");
+
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return NIL_REPLY;
+
         int sort = zsortBy(db, genKeyPartten(DataType.KEY_ZSET_SORT), member1);
         if (sort == -1) {
             return NIL_REPLY;
-        } else
-            return integer(getMeta().getCount() - 1 - sort);
+        } else{
+            return integer(getCount() - 1 - sort);
+        }
     }
 
     /**
@@ -1087,6 +1101,7 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zrem(byte[]... member1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
 
         int rmCnt = 0;
         for (byte[] member : member1) {
@@ -1104,7 +1119,7 @@ public class ZSetMeta extends BaseMeta {
 
         }
 
-        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_ZSET_SCORE)));
+        singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_ZSET_SCORE)));
 
         return integer(rmCnt);
 
@@ -1129,11 +1144,19 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply zrange(byte[] start1, byte[] stop2, byte[] withscores3) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return EMPTY;
+
+
         if (start1 == null || stop2 == null) {
             throw new RedisException("invalid number of argumenst for 'zrange' command");
         }
 
-        long size = getMeta().getCount();
+//        long size = getMeta().getCount();
+        long size = getCount();
+
+        log.debug(String.format("count:%s", size));
+        log.debug(String.format("count:%s", getCount()));
+
         long start = RocksdbRedis._torange(start1, size);
         long end = RocksdbRedis._torange(stop2, size);
         int withscores = _toint(withscores3);
@@ -1161,12 +1184,14 @@ public class ZSetMeta extends BaseMeta {
      */
 
     public MultiBulkReply zrevrange(byte[] start1, byte[] stop2, byte[] withscores3) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return EMPTY;
 
         if (start1 == null || stop2 == null) {
             throw new RedisException("invalid number of argumenst for 'zrange' command");
         }
 
-        long size = getMeta().getCount();
+//        long size = getMeta().getCount();
+        long size = getCount();
         long start = RocksdbRedis._torange(start1, size);
         long end = RocksdbRedis._torange(stop2, size);
         int withscores = _toint(withscores3);
@@ -1246,8 +1271,8 @@ public class ZSetMeta extends BaseMeta {
 //        ByteBuf firstMember=getMember(first);
 //            ByteBuf lastMember=getMember(last);
 
-//            deleteRange(getKey0(), DataType.KEY_ZSET_SCORE,first.member, last.member);
-        deleteRange(getKey0(), DataType.KEY_ZSET_SORT, first.score, last.score);//score+member
+//            clearMetaDataNodeData(getKey0(), DataType.KEY_ZSET_SCORE,first.member, last.member);
+        clearMetaDataNodeData(getKey0(), DataType.KEY_ZSET_SORT, first.score, last.score);//score+member
     }
 
 
@@ -1282,11 +1307,15 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply zrangebyscore(byte[] min1, byte[] max2, byte[]... withscores_offset_or_count4) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return EMPTY;
+
         return _zrangebyscore(min1, max2, withscores_offset_or_count4, false, false);
     }
 
 
     public MultiBulkReply zrangebylex(byte[] min1, byte[] max2, byte[]... offset_or_count4) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return EMPTY;
+
         return _zrangebylex(min1, max2, offset_or_count4, false, false);
     }
 
@@ -1306,6 +1335,8 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply zrevrangebyscore(byte[] max1, byte[] min2, byte[]... withscores_offset_or_count4) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return EMPTY;
+
         return _zrangebyscore(max1, min2, withscores_offset_or_count4, true, false);
     }
 
@@ -1321,6 +1352,8 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zremrangebyscore(byte[] min1, byte[] max2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
+
         MultiBulkReply reply = _zrangebyscore(min1, max2, null, false, true);
         return integer(reply.data().length);
     }
@@ -1336,6 +1369,7 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zremrangebyslex(byte[] min1, byte[] max2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
 
         Lex min = _tolexrange(min1);
         Lex max = _tolexrange(max2);
@@ -1356,8 +1390,10 @@ public class ZSetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply zremrangebyrank(byte[] start1, byte[] stop2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
 
-        long size = getMeta().getCount();
+//        long size = getMeta().getCount();
+        long size = getCount();
         long start = RocksdbRedis._torange(start1, size);
         long end = RocksdbRedis._torange(stop2, size);
 
@@ -1601,6 +1637,7 @@ public class ZSetMeta extends BaseMeta {
      */
     public IntegerReply zadd(byte[]... args) throws RedisException {
 
+
 //        if (args.length < 3 || (args.length - 1) % 2 == 1) {
 //            throw new RedisException("wrong number of arguments for 'zadd' command");
 //        }
@@ -1613,13 +1650,14 @@ public class ZSetMeta extends BaseMeta {
 //        byte[] key = args[0];
         byte[] key = getKey0();
 
-        //判断类型，非hash 类型返回异常信息；
-        int type = genMetaKey(key).getMeta().getType();
-
-        if (type != -1 && type != DataType.KEY_ZSET) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+//        //判断类型，非hash 类型返回异常信息；
+//        int type = genMetaKey(key).getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_ZSET) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_ZSET)) return integer(0);
 
 
         //生成RocksDb 能够识别的 member key ;key=0;i=1 , score=i, member=i+1
@@ -1658,114 +1696,114 @@ public class ZSetMeta extends BaseMeta {
         }
 
         //todo 修改meta 计数 逻辑上一条，实际上两条：一条score 一条rank(sort) 实际上在rocksdb 中保留了两条记录
-        genMetaKey(key);
-        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_ZSET_SCORE)));
+        metaKey=getMetaKey(key);
+        singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_ZSET_SCORE)));
 
         return integer(total);
     }
 
 
     public static void main(String[] args) throws Exception {
-        testSet();
+//        testSet();
 
     }
 
-    /**
-     * Hash数据集测试
-     *
-     * @throws RedisException
-     */
-    private static void testSet() throws RedisException, InterruptedException {
+//    /**
+//     * Hash数据集测试
+//     *
+//     * @throws RedisException
+//     */
+//    private static void testSet() throws RedisException, InterruptedException {
+////
+//        log.debug("|".getBytes().length);
+//        Random random = new Random();
+//        random.ints(6).limit(3).sorted().forEach(System.out::println);
 //
-        log.debug("|".getBytes().length);
-        Random random = new Random();
-        random.ints(6).limit(3).sorted().forEach(System.out::println);
-
-        List<String> strings = Arrays.asList("abc", "", "bc", "efg", "abcd", "", "jkl");
-        long count = strings.parallelStream().filter(string -> string.compareTo("e") > 0).count();
-        strings.stream().filter(string -> string.compareTo("e") > 0).count();
-        log.debug(count);
-        List<Integer> numbers = Arrays.asList(3, 2, 2, 3, 7, 3, 5);
-// 获取对应的平方数
-        List<Integer> squaresList = numbers.stream().map(i -> i * i).distinct().collect(Collectors.toList());
-        Set<Integer> squaresList1 = numbers.stream().map(i -> i * i).collect(Collectors.toSet());
-        log.debug(squaresList);
-        log.debug(squaresList1);
-
-        ZSetMeta setMeta = ZSetMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        setMeta.genMetaKey("ZSet".getBytes()).deleteRange(setMeta.getKey0());
-        Assert.assertEquals(setMeta.zcard().data().intValue(), 0);
-
-        setMeta.genMetaKey("ZSet".getBytes()).
-                zadd("10".getBytes(), "f1".getBytes(),
-                        "20".getBytes(), "f2".getBytes(),
-                        "30".getBytes(), "f3".getBytes());
-
-        Assert.assertEquals(setMeta.zcard().data().intValue(), 3);
-
-        Assert.assertEquals(setMeta.zcount("1".getBytes(), "40".getBytes()).data().intValue(), 3);
-        Assert.assertEquals(setMeta.zcount("15".getBytes(), "40".getBytes()).data().intValue(), 2);
-        Assert.assertEquals(setMeta.zlexcount("f2".getBytes(), "f3".getBytes()).data().intValue(), 2);
-
-        Assert.assertArrayEquals(setMeta.zscore("f1".getBytes()).dataByte(), "10".getBytes());
-
-        String[] zrangestr = {"f2", "20", "f3", "30"};
-        String[] zrevrangestr = {"f3", "30", "f2", "20"};
-        String[] zrangebylexstr = {"f2", "f3"};
-        //安索引
-        MultiBulkReply zrange = setMeta.zrange("1".getBytes(), "2".getBytes(), "1".getBytes());
-        //索引倒序
-        MultiBulkReply zrevrange = setMeta.zrevrange("1".getBytes(), "2".getBytes(), "1".getBytes());
-        //按分数
-        MultiBulkReply zrangebyscore = setMeta.zrangebyscore("19".getBytes(), "31".getBytes(), "WITHSCORES".getBytes());
-        MultiBulkReply zrevrangebyscore = setMeta.zrevrangebyscore("19".getBytes(), "31".getBytes(), "WITHSCORES".getBytes());
-        //按字母
-        MultiBulkReply zrangebylex = setMeta.zrangebylex("f2".getBytes(), "f3".getBytes());
-
-        Assert.assertEquals(Arrays.asList(zrangestr).toString(), zrange.asStringList(Charset.defaultCharset()).toString());
-        Assert.assertEquals(Arrays.asList(zrangestr).toString(), zrangebyscore.asStringList(Charset.defaultCharset()).toString());
-//        Assert.assertEquals(Arrays.asList(zrevrangestr).toString(),zrevrangebyscore.asStringList(Charset.defaultCharset()).toString());
-        Assert.assertEquals(Arrays.asList(zrangebylexstr).toString(), zrangebylex.asStringList(Charset.defaultCharset()).toString());
-        Assert.assertEquals(Arrays.asList(zrevrangestr).toString(), zrevrange.asStringList(Charset.defaultCharset()).toString());
-
-        log.debug(zrange.asStringList(Charset.defaultCharset()));
-        log.debug(zrangebyscore.asStringList(Charset.defaultCharset()));
-        log.debug(zrevrangebyscore.asStringList(Charset.defaultCharset()));
-        log.debug(zrangebylex.asStringList(Charset.defaultCharset()));
-        log.debug(zrevrange.asStringList(Charset.defaultCharset()));
-
-
-        IntegerReply zrank = (IntegerReply) setMeta.zrank("f1".getBytes());
-        IntegerReply zrevrank = (IntegerReply) setMeta.zrevrank("f1".getBytes());
-        Assert.assertEquals(zrank.data().intValue(), 0);
-        Assert.assertEquals(zrevrank.data().intValue(), 2);
-
-        Assert.assertArrayEquals(setMeta.zincrby("-1".getBytes(), "f1".getBytes()).dataByte(), "9".getBytes());
-
-
-        setMeta.zrem("f1".getBytes());
-        Assert.assertNull(setMeta.zscore("f1".getBytes()).data());
-        setMeta.zadd("10".getBytes(), "f1".getBytes());
-        Assert.assertNotNull(setMeta.zscore("f1".getBytes()).data());
-
-        log.debug(setMeta.zremrangebyscore("12".getBytes(), "22".getBytes()));
-        Assert.assertNull(setMeta.zscore("f2".getBytes()).data());
-        setMeta.zadd("20".getBytes(), "f2".getBytes());
-        Assert.assertNotNull(setMeta.zscore("f2".getBytes()).data());
-
-
-        log.debug(setMeta.zremrangebyslex("f1".getBytes(), "f2".getBytes()));
-        Assert.assertNull(setMeta.zscore("f1".getBytes()).data());
+//        List<String> strings = Arrays.asList("abc", "", "bc", "efg", "abcd", "", "jkl");
+//        long count = strings.parallelStream().filter(string -> string.compareTo("e") > 0).count();
+//        strings.stream().filter(string -> string.compareTo("e") > 0).count();
+//        log.debug(count);
+//        List<Integer> numbers = Arrays.asList(3, 2, 2, 3, 7, 3, 5);
+//// 获取对应的平方数
+//        List<Integer> squaresList = numbers.stream().map(i -> i * i).distinct().collect(Collectors.toList());
+//        Set<Integer> squaresList1 = numbers.stream().map(i -> i * i).collect(Collectors.toSet());
+//        log.debug(squaresList);
+//        log.debug(squaresList1);
+//
+//        ZSetMeta setMeta = ZSetMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+//        setMeta.genMetaKey("ZSet".getBytes()).clearMetaDataNodeData(setMeta.getKey0());
+//        Assert.assertEquals(setMeta.zcard().data().intValue(), 0);
+//
+//        setMeta.genMetaKey("ZSet".getBytes()).
+//                zadd("10".getBytes(), "f1".getBytes(),
+//                        "20".getBytes(), "f2".getBytes(),
+//                        "30".getBytes(), "f3".getBytes());
+//
+//        Assert.assertEquals(setMeta.zcard().data().intValue(), 3);
+//
+//        Assert.assertEquals(setMeta.zcount("1".getBytes(), "40".getBytes()).data().intValue(), 3);
+//        Assert.assertEquals(setMeta.zcount("15".getBytes(), "40".getBytes()).data().intValue(), 2);
+//        Assert.assertEquals(setMeta.zlexcount("f2".getBytes(), "f3".getBytes()).data().intValue(), 2);
+//
+//        Assert.assertArrayEquals(setMeta.zscore("f1".getBytes()).dataByte(), "10".getBytes());
+//
+//        String[] zrangestr = {"f2", "20", "f3", "30"};
+//        String[] zrevrangestr = {"f3", "30", "f2", "20"};
+//        String[] zrangebylexstr = {"f2", "f3"};
+//        //安索引
+//        MultiBulkReply zrange = setMeta.zrange("1".getBytes(), "2".getBytes(), "1".getBytes());
+//        //索引倒序
+//        MultiBulkReply zrevrange = setMeta.zrevrange("1".getBytes(), "2".getBytes(), "1".getBytes());
+//        //按分数
+//        MultiBulkReply zrangebyscore = setMeta.zrangebyscore("19".getBytes(), "31".getBytes(), "WITHSCORES".getBytes());
+//        MultiBulkReply zrevrangebyscore = setMeta.zrevrangebyscore("19".getBytes(), "31".getBytes(), "WITHSCORES".getBytes());
+//        //按字母
+//        MultiBulkReply zrangebylex = setMeta.zrangebylex("f2".getBytes(), "f3".getBytes());
+//
+//        Assert.assertEquals(Arrays.asList(zrangestr).toString(), zrange.asStringList(Charset.defaultCharset()).toString());
+//        Assert.assertEquals(Arrays.asList(zrangestr).toString(), zrangebyscore.asStringList(Charset.defaultCharset()).toString());
+////        Assert.assertEquals(Arrays.asList(zrevrangestr).toString(),zrevrangebyscore.asStringList(Charset.defaultCharset()).toString());
+//        Assert.assertEquals(Arrays.asList(zrangebylexstr).toString(), zrangebylex.asStringList(Charset.defaultCharset()).toString());
+//        Assert.assertEquals(Arrays.asList(zrevrangestr).toString(), zrevrange.asStringList(Charset.defaultCharset()).toString());
+//
+//        log.debug(zrange.asStringList(Charset.defaultCharset()));
+//        log.debug(zrangebyscore.asStringList(Charset.defaultCharset()));
+//        log.debug(zrevrangebyscore.asStringList(Charset.defaultCharset()));
+//        log.debug(zrangebylex.asStringList(Charset.defaultCharset()));
+//        log.debug(zrevrange.asStringList(Charset.defaultCharset()));
+//
+//
+//        IntegerReply zrank = (IntegerReply) setMeta.zrank("f1".getBytes());
+//        IntegerReply zrevrank = (IntegerReply) setMeta.zrevrank("f1".getBytes());
+//        Assert.assertEquals(zrank.data().intValue(), 0);
+//        Assert.assertEquals(zrevrank.data().intValue(), 2);
+//
+//        Assert.assertArrayEquals(setMeta.zincrby("-1".getBytes(), "f1".getBytes()).dataByte(), "9".getBytes());
+//
+//
+//        setMeta.zrem("f1".getBytes());
+//        Assert.assertNull(setMeta.zscore("f1".getBytes()).data());
+//        setMeta.zadd("10".getBytes(), "f1".getBytes());
+//        Assert.assertNotNull(setMeta.zscore("f1".getBytes()).data());
+//
+//        log.debug(setMeta.zremrangebyscore("12".getBytes(), "22".getBytes()));
 //        Assert.assertNull(setMeta.zscore("f2".getBytes()).data());
-        setMeta.zadd("10".getBytes(), "f1".getBytes(), "20".getBytes(), "f2".getBytes());
-
-
-        log.debug(setMeta.zremrangebyrank("1".getBytes(), "2".getBytes()));
-        Assert.assertNull(setMeta.zscore("f3".getBytes()).data());
-
-
-        log.debug("Over ... ...");
-
-    }
+//        setMeta.zadd("20".getBytes(), "f2".getBytes());
+//        Assert.assertNotNull(setMeta.zscore("f2".getBytes()).data());
+//
+//
+//        log.debug(setMeta.zremrangebyslex("f1".getBytes(), "f2".getBytes()));
+//        Assert.assertNull(setMeta.zscore("f1".getBytes()).data());
+////        Assert.assertNull(setMeta.zscore("f2".getBytes()).data());
+//        setMeta.zadd("10".getBytes(), "f1".getBytes(), "20".getBytes(), "f2".getBytes());
+//
+//
+//        log.debug(setMeta.zremrangebyrank("1".getBytes(), "2".getBytes()));
+//        Assert.assertNull(setMeta.zscore("f3".getBytes()).data());
+//
+//
+//        log.debug("Over ... ...");
+//
+//    }
 
 }

@@ -1,12 +1,16 @@
 package guava;
 
 import com.clearspring.analytics.stream.cardinality.HyperLogLog;
-import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.io.Output;
 import com.google.common.base.Strings;
 import com.google.common.cache.*;
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
+import com.jayway.jsonpath.Configuration;
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.spi.cache.CacheProvider;
+import com.jayway.jsonpath.spi.json.GsonJsonProvider;
+import com.jayway.jsonpath.spi.mapper.GsonMappingProvider;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
@@ -18,9 +22,13 @@ import org.rocksdb.RocksDBException;
 import org.supermy.util.MyUtils;
 import org.xerial.snappy.Snappy;
 import redis.server.netty.rocksdb.RocksdbRedis;
+import redis.server.netty.utis.DbUtils;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -37,12 +45,12 @@ import java.util.concurrent.TimeUnit;
  * <p>       5、元素移出通知。</p>
  * <p>       6、缓存访问统计。</p><p>
  */
-public  class Cache4RocksTest {
+public class Cache4RocksTest {
 
     private static Logger log = Logger.getLogger(Cache4RocksTest.class);
 
     // 缓存接口这里是LoadingCache，LoadingCache在缓存项不存在时可以自动加载缓存
-    static LoadingCache<Integer, HashMap> studentCache
+    static LoadingCache<Integer, HashMap> kvCache
             // CacheBuilder的构造函数是私有的，只能通过其静态方法newBuilder()来获得CacheBuilder的实例
             = CacheBuilder.newBuilder()
             // 设置并发级别为8，并发级别是指可以同时写缓存的线程数
@@ -109,22 +117,23 @@ public  class Cache4RocksTest {
 
         for (int i = 0; i < 20; i++) {
             // 从缓存中得到数据，由于我们没有设置过缓存，所以需要通过CacheLoader加载缓存数据
-//            HashMap student = studentCache.get(i);
-            HashMap student = studentCache.get(1);
+//            HashMap student = kvCache.get(i);
+            HashMap student = kvCache.get(1);
             log.debug(String.format("获取数据%s", student));
             //修改数据，影响到缓存的数据；
             student.put("modify", "modify");
 
+            log.debug(kvCache.get(1));//验证缓存引用被修改
             // 休眠1秒
             TimeUnit.SECONDS.sleep(1);
         }
 
-        log.debug(String.format("命中率统计信息：%s", studentCache.stats().toString()));
+        log.debug(String.format("命中率统计信息：%s", kvCache.stats().toString()));
 
 //        cahceBuilder.invalidateAll();
     }
 
-   static RocksDB mymeta = RocksdbRedis.mymeta;
+    static RocksDB mymeta = RocksdbRedis.mymeta;
     // 缓存接口这里是LoadingCache，LoadingCache在缓存项不存在时可以自动加载缓存
     // fixme key 不支持byte[]
     static LoadingCache<ByteBuf, BloomFilter<byte[]>> bloomFilterCache
@@ -200,15 +209,15 @@ public  class Cache4RocksTest {
      * \缓存无数据--->加载RocksDb数据---->业务处理----->返回结果----->结束
      * \
      * \缓存数据失效---->持久化数据到RocksDb;
-     *
-     *
+     * <p>
+     * <p>
      * 命中率统计信息：CacheStats{hitCount=0, missCount=0, loadSuccessCount=0, loadExceptionCount=0, totalLoadTime=0, evictionCount=0}
      * 13:42:54,655 DEBUG CacheTest:234 - BloomFilter恢复创建，共BloomFilter.readFrom 1000 个时间8772毫秒;平均单个value(大小2.29MB)put时间：8毫秒
      * 13:42:54,689 DEBUG CacheTest:179 - 加载BloomFilter(误差率6.413930923868137E-81)从RocksDb: key bloom_filter  数量1  初始验证：true 修改验证：false
      * 13:42:56,317 DEBUG CacheTest:268 - BloomFilter 过滤器，共put 1000000 个时间1653毫秒;平均单个value(缓存)gut时间：1653纳秒
      * 13:42:57,201 DEBUG CacheTest:290 - 漏网监测，BloomFilter 过滤器，共mightContain 1000000 个时间874毫秒;平均单个value(缓存)mightContain时间：874纳秒
      * 13:42:57,214 DEBUG CacheTest:310 - 万分之一的错杀率。
-     *  判定1000000个数据，错杀：1, 花费时间:11毫秒
+     * 判定1000000个数据，错杀：1, 花费时间:11毫秒
      * 13:42:57,214 DEBUG CacheTest:315 - 错杀监测，BloomFilter 过滤器，共mightContain 1000000 个时间12毫秒;平均单个value(缓存)mightContain时间：12纳秒
      * 13:42:57,215 DEBUG CacheTest:324 - 命中率统计信息：CacheStats{hitCount=2009999, missCount=1, loadSuccessCount=1, loadExceptionCount=0, totalLoadTime=15016816, evictionCount=0}
      *
@@ -307,7 +316,7 @@ public  class Cache4RocksTest {
                     count,
                     (System.nanoTime() - start0) / 1000 / 1000,
                     "缓存",
-                    (System.nanoTime() - start0)  / count));
+                    (System.nanoTime() - start0) / count));
         }
 
 
@@ -339,7 +348,6 @@ public  class Cache4RocksTest {
 
         log.debug(String.format("命中率统计信息：%s", bloomFilterCache.stats().toString()));
     }
-
 
 
     static LoadingCache<ByteBuf, HyperLogLog> hyperLogLogCache
@@ -394,7 +402,7 @@ public  class Cache4RocksTest {
                 public HyperLogLog load(ByteBuf key) throws Exception {
                     key.resetReaderIndex();
                     byte[] value = mymeta.get(key.array());
-                    HyperLogLog hll=HyperLogLog.Builder.build(value);
+                    HyperLogLog hll = HyperLogLog.Builder.build(value);
 
                     log.debug(String.format("加载HyperLogLog从RocksDb: key %s  数量%s  初始验证：%s ",
                             MyUtils.ByteBuf2String(key),
@@ -420,7 +428,7 @@ public  class Cache4RocksTest {
         ByteBuf key = Unpooled.wrappedBuffer("hyperLogLog".getBytes());
         {
             //数据准备
-            HyperLogLog hll  = new HyperLogLog(12);
+            HyperLogLog hll = new HyperLogLog(12);
             hll.offer("test_one".getBytes());
             mymeta.put(key.array(), hll.getBytes());
         }
@@ -431,9 +439,9 @@ public  class Cache4RocksTest {
         Runtime rt = Runtime.getRuntime();
         {  //初始化数据
             HyperLogLog hll = null;
-            hll=hyperLogLogCache.get(key);//尽量放在循环体外，可以节约一半的时间；
+            hll = hyperLogLogCache.get(key);//尽量放在循环体外，可以节约一半的时间；
 
-            for (int i = 0; i < count+1; i++) {
+            for (int i = 0; i < count + 1; i++) {
                 hll.offer("" + i);
 
                 if (i % 50000 == 1) {
@@ -446,8 +454,8 @@ public  class Cache4RocksTest {
             }
 
             log.debug(String.format("\n 基于基数统计，花费时间%s毫秒 ,单个花费%s纳秒；Total count:[%s]  Unique count:[%s] FreeMemory:[%sK] ..",
-                    (System.nanoTime()-start0)/1000/1000,
-                    (System.nanoTime()-start0)/count,
+                    (System.nanoTime() - start0) / 1000 / 1000,
+                    (System.nanoTime() - start0) / count,
                     count,
                     hll.cardinality(),
                     rt.freeMemory() / 1024
@@ -472,11 +480,11 @@ public  class Cache4RocksTest {
     @Test
     public void capToRocksDb() throws Exception {
 
-        String phones= Strings.repeat("13689588588",10000000);
+        String phones = Strings.repeat("13689588588", 10000000);
 
         log.debug(String.format("1亿手机占用容量：字符，%s 压缩后字节，%s",
-                MyUtils.bytes2kb(phones.length()*10),
-                MyUtils.bytes2kb(Snappy.compress(phones).length*10)
+                MyUtils.bytes2kb(phones.length() * 10),
+                MyUtils.bytes2kb(Snappy.compress(phones).length * 10)
         ));
 
     }
@@ -504,12 +512,10 @@ public  class Cache4RocksTest {
                             notification.getValue().getLongCardinality()));
 
                     try {
-                        ByteArrayOutputStream output = new ByteArrayOutputStream();
                         {
-
                             Roaring64NavigableMap r64nm = notification.getValue();
 
-                            mymeta.put(notification.getKey().array(), Snappy.compress(exportBitmap(r64nm).toByteArray()));
+                            mymeta.put(notification.getKey().array(), Snappy.compress(DbUtils.exportBitmap(r64nm).toByteArray()));
 
                             log.debug(String.format("获取Roaring64NavigableMap(数量=%s) 列表，持久化到 RocksDb。\n key:%s 初始验证：%s  修改验证：%s",
                                     r64nm.getLongCardinality(),
@@ -534,9 +540,9 @@ public  class Cache4RocksTest {
                     key.resetReaderIndex();
                     byte[] value = Snappy.uncompress(mymeta.get(key.array()));
 
-                    Roaring64NavigableMap r64nm = importBitmap(value);
+                    Roaring64NavigableMap r64nm = DbUtils.importBitmap(value);
 
-                    log.debug(String.format("加载HyperLogLog从RocksDb: key %s  数量%s  初始验证：%s 修改验证：%s\"",
+                    log.debug(String.format("加载Roaring64NavigableMap: key %s  数量%s  初始验证：%s 修改验证：%s\"",
                             MyUtils.ByteBuf2String(key),
                             r64nm.getLongCardinality(),
                             r64nm.contains(13691588588l),
@@ -549,48 +555,21 @@ public  class Cache4RocksTest {
                 }
             });
 
-    public static Roaring64NavigableMap importBitmap(ByteArrayOutputStream baos) throws IOException {
-        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
-        DataInputStream dis = new DataInputStream(bais);
-        Roaring64NavigableMap r11=new Roaring64NavigableMap();
-        r11.deserialize(dis);
-        dis.close();
-        return r11;
-    }
-
-    public static Roaring64NavigableMap importBitmap(byte[] r64nm) throws IOException {
-        ByteArrayInputStream bais = new ByteArrayInputStream(r64nm);
-        DataInputStream dis = new DataInputStream(bais);
-        Roaring64NavigableMap r11=new Roaring64NavigableMap();
-        r11.deserialize(dis);
-        dis.close();
-        return r11;
-    }
-
-    public static ByteArrayOutputStream exportBitmap(Roaring64NavigableMap r1) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        DataOutputStream dos = new DataOutputStream(baos);
-        r1.serialize(dos);
-        dos.flush();
-        dos.close();
-        return baos;
-    }
-
 
     /**
      * 有使用Snappy进行数据压缩
-     *
+     * <p>
      * 22:35:04,926 DEBUG Cache4RocksTest:539 - 加载HyperLogLog从RocksDb: key roaring_bit  数量1  初始验证：true 修改验证：false"
      * 22:35:05,444 DEBUG Cache4RocksTest:604 - Roaring64NavigableMap 位计算，共put 1000000 个时间541毫秒;平均单个value(缓存)gut时间：541纳秒
      * 22:35:05,762 DEBUG Cache4RocksTest:626 - 漏网监测，Roaring64NavigableMap 过滤器，contains 1000000 个时间316毫秒;平均单个value(缓存)contains时间：316纳秒
      * 22:35:05,762 DEBUG Cache4RocksTest:634 - 命中率统计信息：CacheStats{hitCount=1999999, missCount=1, loadSuccessCount=1, loadExceptionCount=0, totalLoadTime=15509755, evictionCount=0}
-     *
+     * <p>
      * 循环内获取cache
      * 22:36:02,950 DEBUG Cache4RocksTest:539 - 加载HyperLogLog从RocksDb: key roaring_bit  数量1  初始验证：true 修改验证：false"
      * 22:36:17,755 DEBUG Cache4RocksTest:614 - Roaring64NavigableMap 位计算，共put 100000000 个时间14877毫秒;平均单个value(缓存)gut时间：148纳秒
      * 22:36:32,966 DEBUG Cache4RocksTest:636 - 漏网监测，Roaring64NavigableMap 过滤器，contains 100000000 个时间15202毫秒;平均单个value(缓存)contains时间：152纳秒
      * 22:36:32,975 DEBUG Cache4RocksTest:644 - 命中率统计信息：CacheStats{hitCount=199999999, missCount=1, loadSuccessCount=1, loadExceptionCount=0, totalLoadTime=13996846, evictionCount=0}
-     *
+     * <p>
      * 循环外获取cache
      * 22:37:37,222 DEBUG Cache4RocksTest:539 - 加载HyperLogLog从RocksDb: key roaring_bit  数量1  初始验证：true 修改验证：false"
      * 22:37:40,951 DEBUG Cache4RocksTest:620 - Roaring64NavigableMap 位计算，共put 100 000 000 个时间3771毫秒;平均单个value(缓存)gut时间：37纳秒
@@ -609,7 +588,7 @@ public  class Cache4RocksTest {
             //数据准备
             Roaring64NavigableMap r64nm = new Roaring64NavigableMap();
             r64nm.addLong(13691588588l);
-            mymeta.put("roaring_bit".getBytes(), Snappy.compress(exportBitmap(r64nm).toByteArray()));
+            mymeta.put("roaring_bit".getBytes(), Snappy.compress(DbUtils.exportBitmap(r64nm).toByteArray()));
         }
 
 //        {
@@ -619,10 +598,16 @@ public  class Cache4RocksTest {
 
         {  //初始化数据
             Roaring64NavigableMap bits = bitCache.get(key);
-            for (int i = 0; i < count; i++) {
+            for (long i = 0; i < count; i++) {
                 // 从缓存中得到数据，由于我们没有设置过缓存，所以需要通过CacheLoader加载缓存数据
                 bits.add(i);
             }
+
+//            bitCache.put(key,bits);
+//            bitCache.refresh(key);
+
+            log.debug(bits.getLongCardinality());
+
             log.debug(String.format("Roaring64NavigableMap 位计算，共put %s 个时间%s毫秒;平均单个value(%s)gut时间：%s纳秒",
                     count,
                     (System.nanoTime() - start0) / 1000 / 1000,
@@ -636,9 +621,11 @@ public  class Cache4RocksTest {
 
             start0 = System.nanoTime();
             Roaring64NavigableMap bits = bitCache.get(key);
+            log.debug(bits.getLongCardinality());
+
 
             //验证数据
-            for (int i = 0; i < count; i++) {
+            for (long i = 0; i < count; i++) {
                 // 从缓存中得到数据，由于我们没有设置过缓存，所以需要通过CacheLoader加载缓存数据
 
                 if (!bits.contains(i)) {
@@ -650,11 +637,265 @@ public  class Cache4RocksTest {
                     count,
                     (System.nanoTime() - start0) / 1000 / 1000,
                     "缓存",
-                    (System.nanoTime() - start0)  / count));
+                    (System.nanoTime() - start0) / count));
         }
 
 
         log.debug(String.format("命中率统计信息：%s", bitCache.stats().toString()));
+    }
+
+
+    static LoadingCache<ByteBuf, DocumentContext> jsonCache
+            // CacheBuilder的构造函数是私有的，只能通过其静态方法newBuilder()来获得CacheBuilder的实例
+            = CacheBuilder.newBuilder()
+            // 设置并发级别为8，并发级别是指可以同时写缓存的线程数
+            .concurrencyLevel(8)
+            // 设置写缓存后8秒钟过期
+            .expireAfterWrite(60, TimeUnit.SECONDS)
+            // 设置缓存容器的初始容量为10
+            .initialCapacity(10)
+//            .maximumWeight(10*1024*1024)
+            // 设置缓存最大容量为100，超过100之后就会按照LRU最近虽少使用算法来移除缓存项
+            .maximumSize(100)
+            // 设置要统计缓存的命中率
+            .recordStats()
+            // 设置缓存的移除通知 ,将数据持久化到RocksDb
+            .removalListener(new RemovalListener<ByteBuf, DocumentContext>() {
+                public void onRemoval(RemovalNotification<ByteBuf, DocumentContext> notification) {
+                    log.debug(String.format("因为%s的原因，%s=%s已经删除",
+                            notification.getCause(),
+                            MyUtils.ByteBuf2String(notification.getKey()),
+                            notification.getValue().jsonString()));
+
+                    try {
+                        {
+                            DocumentContext json = notification.getValue();
+
+                            mymeta.put(notification.getKey().array(), Snappy.compress(json.jsonString()));
+
+                            log.debug(String.format("获取DocumentContext Json文档，持久化到 RocksDb。\n key:%s json:%s",
+                                    MyUtils.ByteBuf2String(notification.getKey()),
+                                    json.jsonString()
+                                    )
+                            );
+                        }
+                    } catch (RocksDBException | IOException e) {
+                        e.printStackTrace();
+//                        Throwables.propagateIfPossible(e, RedisException.class);
+                    }
+
+                }
+            })
+
+            // build方法中可以指定CacheLoader，在缓存不存在时通过CacheLoader的实现自动加载缓存
+            // 从RocksDb中加载数据
+            .build(new CacheLoader<ByteBuf, DocumentContext>() {
+                @Override
+                public DocumentContext load(ByteBuf key) throws Exception {
+                    key.resetReaderIndex();
+
+                    byte[] value = mymeta.get(key.array());
+
+                    Configuration conf = Configuration.builder().jsonProvider(new GsonJsonProvider()).mappingProvider(new GsonMappingProvider()).build();
+                    CacheProvider.setCache(new com.jayway.jsonpath.spi.cache.Cache() {
+                        com.google.common.cache.Cache<String, JsonPath> caches = CacheBuilder.newBuilder()
+                                .maximumSize(1000)
+                                .expireAfterWrite(10, TimeUnit.MINUTES)
+                                .build();
+
+                        @Override
+                        public JsonPath get(String key) {
+//                            log.debug("get===========key:" + key);
+                            return caches.getIfPresent(key);
+                        }
+
+                        @Override
+                        public void put(String key, JsonPath jsonPath) {
+                            log.debug("put===========key:" + key);
+                            caches.put(key, jsonPath);
+                        }
+
+                    });
+
+                    DocumentContext json = JsonPath.using(conf).parse(Snappy.uncompressString(value));
+
+                    log.debug(String.format("获取DocumentContext Json文档，持久化到 RocksDb。\n key:%s json:%s",
+                            MyUtils.ByteBuf2String(key),
+                            json.jsonString()
+                            )
+                    );
+
+                    return json;
+                }
+            });
+
+
+
+    @Test
+    public void cacheJsonPathToRocksDb() throws Exception {
+
+        log.debug(String.format("JsonPath解析：%s", jsonCache.stats().toString()));
+
+        ByteBuf key = Unpooled.wrappedBuffer("jsonPath".getBytes());
+        {
+            //数据准备
+            String json1="{\"books\":[{\"category\":\"fiction\"},{\"category\":\"reference\"},{\"category\":\"fiction\"},{\"category\":\"fiction\"},{\"category\":\"reference\"},{\"category\":\"fiction\"},{\"category\":\"reference\"},{\"category\":\"reference\"},{\"category\":\"reference\"},{\"category\":\"reference\"},{\"category\":\"reference\"}]}";
+            DocumentContext ext = JsonPath.parse(json1);
+            mymeta.put(key.array(), Snappy.compress(ext.jsonString()));
+        }
+
+        long count = 100000;
+        long start0 = System.nanoTime();
+        Runtime rt = Runtime.getRuntime();
+        {  //初始化数据
+            DocumentContext json =  jsonCache.get(key);//尽量放在循环体外，可以节约一半的时间；
+            List<String> categories=null;
+            for (int i = 0; i < count + 1; i++) {
+//                json.delete("$.books[?(@.category == 'reference')]");
+                categories = json.read("$..category", List.class);
+            }
+
+
+            log.debug(String.format("\n JsonPath解析(path%s = result%s)，花费时间%s毫秒 ,单个花费%s纳秒； FreeMemory:[%sK] ..",
+                    "$..category",
+                    categories,
+                    (System.nanoTime() - start0) / 1000 / 1000,
+                    (System.nanoTime() - start0) / count,
+                    rt.freeMemory() / 1024
+            ));
+
+        }
+
+        log.debug(String.format("命中率统计信息：%s", jsonCache.stats().toString()));
+    }
+
+
+    /**
+     * meta 缓存，大多数数据落盘RocksDb 由两次简化为一次。
+     */
+    static LoadingCache<ByteBuf, ByteBuf> metaCache
+            // CacheBuilder的构造函数是私有的，只能通过其静态方法newBuilder()来获得CacheBuilder的实例
+            = CacheBuilder.newBuilder()
+            // 设置并发级别为8，并发级别是指可以同时写缓存的线程数
+            .concurrencyLevel(8)
+            // 设置写缓存后8秒钟过期
+            .expireAfterWrite(60, TimeUnit.SECONDS)
+            // 设置缓存容器的初始容量为10
+            .initialCapacity(10)
+//            .maximumWeight(10*1024*1024)
+            // 设置缓存最大容量为100，超过100之后就会按照LRU最近虽少使用算法来移除缓存项
+            .maximumSize(100)
+            // 设置要统计缓存的命中率
+            .recordStats()
+            // 设置缓存的移除通知 ,将数据持久化到RocksDb
+            .removalListener(new RemovalListener<ByteBuf, ByteBuf>() {
+                public void onRemoval(RemovalNotification<ByteBuf, ByteBuf> notification) {
+                    log.debug(String.format("因为%s的原因，%s=%s已经删除",
+                            notification.getCause(),
+                            notification.getKey(),
+                            MyUtils.ByteBuf2String(notification.getValue())
+                            ));
+
+                    try {
+                        {
+                            mymeta.put(MyUtils.toByteArray(notification.getKey()), MyUtils.toByteArray(notification.getValue()));
+
+                            log.debug(String.format("获取meta，持久化到 RocksDb。\n key:%s json:%s",
+                                    notification.getKey(),
+                                    notification.getKey()
+                                    )
+                            );
+                        }
+                    } catch (RocksDBException  e) {
+                        log.debug(e.getMessage());
+                        e.printStackTrace();
+                    }
+
+                }
+            })
+
+            // build方法中可以指定CacheLoader，在缓存不存在时通过CacheLoader的实现自动加载缓存
+            // 从RocksDb中加载数据
+            .build(new CacheLoader<ByteBuf, ByteBuf>() {
+                @Override
+                public ByteBuf load(ByteBuf key) throws Exception {
+//                    log.debug(new Date());
+
+//                    key.resetReaderIndex();
+
+                    byte[] value = mymeta.get(MyUtils.toByteArray(key));
+//                    log.debug(new String(key.array()));
+//                    log.debug(new String(MyUtils.toByteArray(key)));
+//
+//
+//                    byte[] value = mymeta.get(key.array());
+
+
+                    log.debug(String.format("获取meta，key:%s json:%s",
+                            key,
+                            new String(value)
+                            )
+                    );
+
+                    return Unpooled.wrappedBuffer(value);
+//                    return Unpooled.copiedBuffer(value);
+                }
+            });
+
+
+
+    @Test
+    public void metaToRocksDb() throws Exception {
+
+        log.debug(String.format("meta数据：%s", metaCache.stats().toString()));
+
+        ByteBuf key = Unpooled.wrappedBuffer("metaTest".getBytes());
+//        String key="metaTest";
+        ByteBuf val = Unpooled.wrappedBuffer("metaValue".getBytes());
+        {
+            mymeta.put("metaTest".getBytes(), val.array());
+        }
+
+        long count = 100000;
+        long start0 = System.nanoTime();
+        Runtime rt = Runtime.getRuntime();
+        log.debug("-----------------0 失效再加载一次");
+
+        {  //初始化数据
+            for (int i = 0; i < count + 1; i++) {
+//                ByteBuf val0 =  metaCache.get(key);//尽量放在循环体外，可以节约一半的时间；
+                ByteBuf val0 =  metaCache.get(key);//尽量放在循环体外，可以节约一半的时间；
+                Assert.assertEquals(val,val0);
+            }
+            log.debug("-----------------1");
+
+            {
+                ByteBuf val0 =  metaCache.get(key);//尽量放在循环体外，可以节约一半的时间；
+
+                log.debug(metaCache.get(key));
+                log.debug(MyUtils.ByteBuf2String(metaCache.get(key)));
+
+                val0.resetWriterIndex();
+                val0.resetReaderIndex();
+                val0.writeBytes("modify".getBytes());
+
+                log.debug(metaCache.get(key));
+                log.debug(MyUtils.ByteBuf2String(metaCache.get(key)));
+
+            }
+
+
+            log.debug(String.format("\n meta数据析(key%s = val%s)，花费时间%s毫秒 ,单个花费%s纳秒； FreeMemory:[%sK] ..",
+                    key,
+                    MyUtils.ByteBuf2String(val),
+                    (System.nanoTime() - start0) / 1000 / 1000,
+                    (System.nanoTime() - start0) / count,
+                    rt.freeMemory() / 1024
+            ));
+
+        }
+
+        log.debug(String.format("命中率统计信息：%s", metaCache.stats().toString()));
     }
 
 }

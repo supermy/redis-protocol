@@ -1,10 +1,10 @@
-package com.bigdata;//去除重复并排序
+package com.bigdata;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Random;
 
 /**
- *
+ *去除重复并排序
  *
  */
 public class BitMap {

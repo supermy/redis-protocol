@@ -383,7 +383,7 @@ public class ListNode extends BaseNode {
         if(key!=null) return key;
         keyBuf.resetReaderIndex();
 
-//        ByteBuf preKeyBuf = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE, DataType.SPLIT);
+//        ByteBuf preKeyBuf = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE, DataType.SPLIT);
 
 //        ByteBuf val0Buf = Unpooled.buffer(8);
 //        val0Buf.writeLong(seq);
@@ -605,7 +605,7 @@ public class ListNode extends BaseNode {
         sb.append(" , TTL =");
         sb.append(getTtl());
 
-        sb.append(" , TYPE =");
+        sb.append(" , KEYTYPE =");
         sb.append(get(Meta.TYPE1));
 
         sb.append(" , SIZE =");

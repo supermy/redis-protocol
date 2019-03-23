@@ -67,7 +67,7 @@ import static redis.util.Encoding.numToBytes;
  * <p>
  * not support method: getbit setbit
  */
-public class HyperLogLogMeta {
+public class HyperLogLogMeta  {
 
     private static Logger log = Logger.getLogger(HyperLogLogMeta.class);
 
@@ -76,7 +76,7 @@ public class HyperLogLogMeta {
 
     private static RocksDB db;
 
-    private byte[] NS;
+    private static byte[] NS;
     private static byte[] TYPE = DataType.KEY_META;
 
     private ByteBuf metaKey;
@@ -137,7 +137,7 @@ public class HyperLogLogMeta {
 
 //    public void setKey0(byte[] key0)  {
 //        metaKey.resetReaderIndex();
-//        this.metaKey = Unpooled.wrappedBuffer(NS, key0, TYPE);
+//        this.metaKey = Unpooled.wrappedBuffer(NS, key0, KEYTYPE);
 //    }
 
 
@@ -523,6 +523,9 @@ public class HyperLogLogMeta {
 //            Throwables.propagateIfPossible(e,RedisException.class);
 //        }
 
+//        hyperLogLogCache.put(Unpooled.wrappedBuffer(getKey0()),hll);
+
+
         return integer(members.length);
     }
 
@@ -654,12 +657,12 @@ public class HyperLogLogMeta {
 
 
     public static byte[] getMetaKey(byte[] key0) {
-        ByteBuf metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        ByteBuf metaKey = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
         return MyUtils.toByteArray(metaKey);
     }
 
     public static ByteBuf getMetaKey1(byte[] key0) {
-        ByteBuf metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        ByteBuf metaKey = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
         return metaKey;
     }
 
@@ -720,11 +723,9 @@ public class HyperLogLogMeta {
                             db.put(getMetaKey(notification.getKey().array()), getMetaVal(hll.getBytes(), -1));
 
 
-                            log.debug(String.format("获取HyperLogLog(基数=%s) 列表，持久化到 RocksDb。\n key:%s 初始验证：%s  修改验证：%s",
+                            log.debug(String.format("获取HyperLogLog(基数=%s) 列表，持久化到 RocksDb。\n key:%s",
                                     hll.cardinality(),
-                                    MyUtils.ByteBuf2String(notification.getKey()),
-                                    hll.offer("test_one".getBytes()),
-                                    hll.offer("test_modify".getBytes())
+                                    MyUtils.ByteBuf2String(notification.getKey())
                                     )
                             );
                         }
@@ -754,10 +755,10 @@ public class HyperLogLogMeta {
                     }
 
 
-                    log.debug(String.format("加载HyperLogLog从RocksDb: key %s  数量%s  初始验证：%s ",
+                    log.debug(String.format("加载HyperLogLog从RocksDb: key %s  数量%s",
                             MyUtils.ByteBuf2String(key0),
-                            hll.cardinality(),
-                            hll.offer("test_one".getBytes()))
+                            hll.cardinality()
+                          )
                     );
                     return hll;
                 }

@@ -16,7 +16,9 @@ import java.util.*;
 
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
+import static redis.netty4.MultiBulkReply.EMPTY;
 import static redis.netty4.StatusReply.OK;
+import static redis.netty4.StatusReply.QUIT;
 import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 import static redis.util.Encoding.bytesToNum;
 
@@ -64,6 +66,7 @@ public class SetMeta extends BaseMeta {
     public static SetMeta getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
+        instance.VAlTYPE = DataType.KEY_SET;
         setNode = SetNode.getInstance(db0, ns0);
         return instance;
     }
@@ -75,140 +78,133 @@ public class SetMeta extends BaseMeta {
      * @return
      * @throws RedisException
      */
+    @Deprecated
     public SetMeta genMetaKey(byte[] key0) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("key0 主键不能为空"));
         }
-        instance.metaKey = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        instance.metaKey = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
         return instance;
     }
 
-    private ByteBuf genMetaVal(long count) {
-        ByteBuf val = Unpooled.buffer(8);
+//    private ByteBuf genMetaVal(long count) {
+//        ByteBuf val = Unpooled.buffer(8);
+//
+//        val.writeLong(-1); //ttl 无限期 -1
+//        val.writeBytes(DataType.SPLIT);
+//
+//        val.writeInt(DataType.KEY_SET); //long 8 bit
+//        val.writeBytes(DataType.SPLIT);
+//
+//        val.writeLong(count);  //数量
+//        val.writeBytes(DataType.SPLIT);
+//
+//        return val;
+//    }
 
-        val.writeLong(-1); //ttl 无限期 -1
-        val.writeBytes(DataType.SPLIT);
+//    /**
+//     * 创建meta key
+//     *
+//     * @param count
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected SetMeta setMeta(long count) throws RedisException {
+//
+//        this.metaVal = genMetaVal(count);
+//
+//        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
+//
+//        try {
+//            db.put(getKey(), getVal());//fixme
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
 
-        val.writeInt(DataType.KEY_SET); //long 8 bit
-        val.writeBytes(DataType.SPLIT);
-
-        val.writeLong(count);  //数量
-        val.writeBytes(DataType.SPLIT);
-
-        return val;
-    }
-
-    /**
-     * 创建meta key
-     *
-     * @param count
-     * @return
-     * @throws RedisException
-     */
-    protected SetMeta setMeta(long count) throws RedisException {
-
-        this.metaVal = genMetaVal(count);
-
-        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
-
-        try {
-            db.put(getKey(), getVal());//fixme
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
-
-    /**
-     * 获取meta 数据
-     *
-     * @return
-     * @throws RedisException
-     */
-    protected SetMeta getMeta() throws RedisException {
-
-        try {
-            byte[] value = db.get(getKey());
-            if (value == null) this.metaVal = null;
-            else
-                this.metaVal = Unpooled.wrappedBuffer(value);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
-
-
+//    /**
+//     * 获取meta 数据
+//     *
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected SetMeta getMeta() throws RedisException {
+//
+//        try {
+//            byte[] value = db.get(getKey());
+//            if (value == null) this.metaVal = null;
+//            else
+//                this.metaVal = Unpooled.wrappedBuffer(value);
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
 
 
-    public long getVal0() throws RedisException {
-        return metaVal.getLong(8 + 4 + 2);
-    }
 
-    public void setVal0(long val0) throws RedisException {
-        this.metaVal.setLong(8 + 4 + 2, val0);  //数量
-    }
+//
+//    public long getVal0() throws RedisException {
+//        return metaVal.getLong(8 + 4 + 2);
+//    }
+//
+//    public void setVal0(long val0) throws RedisException {
+//        this.metaVal.setLong(8 + 4 + 2, val0);  //数量
+//    }
 
-    public byte[] getVal() throws RedisException {
-        this.metaVal.resetReaderIndex();
-        return this.metaVal.readBytes(metaVal.readableBytes()).array();
-    }
+//    public byte[] getVal() throws RedisException {
+//        this.metaVal.resetReaderIndex();
+//        return this.metaVal.readBytes(metaVal.readableBytes()).array();
+//    }
+//
+//    public byte[] getVal(ByteBuf val) throws RedisException {
+//        val.resetReaderIndex();
+//        return val.readBytes(val.readableBytes()).array();
+//    }
 
-    public byte[] getVal(ByteBuf val) throws RedisException {
-        val.resetReaderIndex();
-        return val.readBytes(val.readableBytes()).array();
-    }
+//    public long getTtl() {
+//        return metaVal.getLong(0);
+//    }
+//
+//    public int getType() throws RedisException {
+//        if (metaVal == null) return -1;
+//        return this.metaVal.getInt(8 + 1);
+//    }
 
-    public long getTtl() {
-        return metaVal.getLong(0);
-    }
-
-    public int getType() throws RedisException {
-        if (metaVal == null) return -1;
-        return this.metaVal.getInt(8 + 1);
-    }
-
-    /**
-     * 元素数量
-     *
-     * @return
-     */
-    public long getCount() throws RedisException {
-        return getVal0();
-    }
-
-
-    public void setCount(long val) throws RedisException {
-        setVal0(val);
-    }
-
-
-    /**
-     * TTL 过期数据处理
-     *
-     * @return
-     */
-    private long now() {
-        return System.currentTimeMillis();
-    }
+//    /**
+//     * 元素数量
+//     *
+//     * @return
+//     */
+//    public long getCount() throws RedisException {
+//        return getVal0();
+//    }
+//
+//
+//    public void setCount(long val) throws RedisException {
+//        setVal0(val);
+//    }
 
 
-    public String info() throws RedisException {
 
-        StringBuilder sb = new StringBuilder(getKey0Str());
-
-        sb.append(":");
-        sb.append("  count=");
-        sb.append(getCount());
-
-        log.debug(sb.toString());
-
-        return sb.toString();
-    }
+//
+//    public String info() throws RedisException {
+//
+//        StringBuilder sb = new StringBuilder(getKey0Str());
+//
+//        sb.append(":");
+//        sb.append("  count=");
+//        sb.append(getCount());
+//
+//        log.debug(sb.toString());
+//
+//        return sb.toString();
+//    }
 
 
 
@@ -234,17 +230,24 @@ public class SetMeta extends BaseMeta {
 
             long cnt = countBy(db, keyPartten);
 
-            log.debug("MetaCountCaller ... cnt:" + cnt);
 
+            log.debug(String.format("MetaCountCaller key=%s... cnt:%s",
+                    new String(key0),
+                    cnt));
+            //更新缓存计数，直接修改缓存数据；
+            metaCache.put(Unpooled.wrappedBuffer(key0),getMetaVal(cnt,-1));
 
-            try {
-                db.put(key0, getVal(genMetaVal(cnt)));
-
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-            } catch (RedisException e) {
-                e.printStackTrace();
-            }
+//            log.debug("MetaCountCaller ... cnt:" + cnt);
+//
+//
+//            try {
+//                db.put(key0, getVal(genMetaVal(cnt)));
+//
+//            } catch (RocksDBException e) {
+//                e.printStackTrace();
+//            } catch (RedisException e) {
+//                e.printStackTrace();
+//            }
 
 
         }
@@ -252,16 +255,15 @@ public class SetMeta extends BaseMeta {
 
 
 
-    /**
-     * 构建子元素扫描key
-     *
-     * @param filedType
-     * @return
-     */
-    public byte[] genKeyPartten(byte[] filedType) throws RedisException {
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(NS, DataType.SPLIT, getKey0(), DataType.SPLIT, filedType, DataType.SPLIT);
-        return byteBuf.readBytes(byteBuf.readableBytes()).array();
-    }
+//    /**
+//     * 构建子元素扫描key
+//     *
+//     * @param filedType
+//     * @return
+//     */
+//    public byte[] genKeyPartten(byte[] filedType) throws RedisException {
+//        return super.genKeyPartten(filedType);
+//    }
 
     /**
      * 与keys 分开，减少内存占用；
@@ -445,12 +447,15 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply scard() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return integer(0);
+
 //        long cnt = countBy(db, genKeyPartten(DataType.KEY_SET_MEMBER));//fixme 优化，从meta 获取数量
 //        log.debug("元素数量："+getMeta().getCount());
 //        log.debug("元素数量："+cnt);
 //        Assert.assertEquals(cnt,getMeta().getCount());
 //        return integer(cnt);
-        return integer(getMeta().getCount());
+        return integer(getCount());
+//        return integer(getMeta().getCount());
     }
 
     /**
@@ -471,6 +476,8 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply sdiff(byte[]... key0) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return EMPTY;
+
         Set set = _sdiff(key0);
         debugBytebuf(set);
         return _setreply(set);
@@ -487,10 +494,10 @@ public class SetMeta extends BaseMeta {
         Set<ByteBuf> set = new HashSet<ByteBuf>();
         for (byte[] key : key0) {
             if (set.isEmpty()) {
-                genMetaKey(key);
+                metaKey=getMetaKey(key);
                 set.addAll(members(db, genKeyPartten(DataType.KEY_SET_MEMBER)));
             } else {
-                genMetaKey(key);
+                metaKey=getMetaKey(key);
                 Set<ByteBuf> members = members(db, genKeyPartten(DataType.KEY_SET_MEMBER));
                 set.removeAll(members);
                 resetBytebuf(set);
@@ -547,22 +554,24 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply sdiffstore(byte[] destination0, byte[]... key1) throws RedisException {
-        //判断类型，非set 类型返回异常信息；
-        int type = getMeta().getType();
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return integer(0);
 
-        log.debug(type);
-
-        if (type != -1 && type != DataType.KEY_SET) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+//        //判断类型，非set 类型返回异常信息；
+//        int type = getMeta().getType();
+//
+//        log.debug(type);
+//
+//        if (type != -1 && type != DataType.KEY_SET) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
         Set<ByteBuf> set = _sdiff(key1);
 
         IntegerReply store = store(destination0, set);
 
-        genMetaKey(destination0);
-        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_SET_MEMBER)));
+        metaKey=getMetaKey(destination0);
+        singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_SET_MEMBER)));
 
         return store;
     }
@@ -585,7 +594,8 @@ public class SetMeta extends BaseMeta {
                 replies[i++] = value.readBytes(value.readableBytes()).array();
             }
 
-            genMetaKey(destination0).sadd(replies);
+            metaKey=getMetaKey(destination0);
+            sadd(replies);
 
             return integer(set.size());
         } else {
@@ -602,6 +612,8 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply sinter(byte[]... key0) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return EMPTY;
+
         Set set = _sinter(key0);
         debugBytebuf(set);
         return _setreply(set);
@@ -618,10 +630,10 @@ public class SetMeta extends BaseMeta {
         Set<ByteBuf> set = new HashSet<ByteBuf>();
         for (byte[] key : key0) {
             if (set.isEmpty()) {
-                genMetaKey(key);
+                metaKey=getMetaKey(key);
                 set.addAll(members(db, genKeyPartten(DataType.KEY_SET_MEMBER)));
             } else {
-                genMetaKey(key);
+                metaKey= getMetaKey(key);
                 set.retainAll(members(db, genKeyPartten(DataType.KEY_SET_MEMBER)));
                 resetBytebuf(set);
             }
@@ -644,10 +656,10 @@ public class SetMeta extends BaseMeta {
         Set<ByteBuf> set = new HashSet<ByteBuf>();
         for (byte[] key : key0) {
             if (set.isEmpty()) {
-                genMetaKey(key);
+                metaKey=getMetaKey(key);
                 set.addAll(members(db, genKeyPartten(DataType.KEY_SET_MEMBER)));
             } else {
-                genMetaKey(key);
+                metaKey=getMetaKey(key);
                 set.addAll(members(db, genKeyPartten(DataType.KEY_SET_MEMBER)));
                 resetBytebuf(set);
             }
@@ -669,21 +681,23 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply sinterstore(byte[] destination0, byte[]... key1) throws RedisException {
-
-        //判断类型，非set 类型返回异常信息；
-        int type = getMeta().getType();
-
-        if (type != -1 && type != DataType.KEY_SET) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return integer(0);
+//
+//        //判断类型，非set 类型返回异常信息；
+//        int type = getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_SET) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
         Set<ByteBuf> set = _sinter(key1);
 
         IntegerReply store = store(destination0, set);
 
-        genMetaKey(destination0);
-        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_SET_MEMBER)));
+        metaKey=getMetaKey(destination0);
+
+        singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_SET_MEMBER)));
 
         return store;
 
@@ -700,6 +714,7 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply sismember(byte[] member1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return integer(0);
 
         boolean exists = setNode.genKey1(getKey0(), member1).exists();
         return exists?integer(1) : integer(0);
@@ -714,6 +729,7 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply smembers() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return EMPTY;
 
         Set<ByteBuf> members = members(db, genKeyPartten(DataType.KEY_SET_MEMBER));
 
@@ -758,12 +774,15 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply smove(byte[] source0, byte[] destination1, byte[] member2) throws RedisException {
-        int type = getMeta().getType();
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return integer(0);
 
-        if (type != -1 && type != DataType.KEY_SET) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+//
+//        int type = getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_SET) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
         boolean exists = setNode.genKey1(source0, member2).exists();
 
@@ -771,11 +790,11 @@ public class SetMeta extends BaseMeta {
             setNode.genKey1(source0,member2).srem();
             setNode.genKey1(destination1,member2).sadd();
 
-            genMetaKey(source0);
-            singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_SET_MEMBER)));
+            metaKey=getMetaKey(source0);
+            singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_SET_MEMBER)));
 
-            genMetaKey(destination1);
-            singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_SET_MEMBER)));
+            metaKey=getMetaKey(destination1);
+            singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_SET_MEMBER)));
 
 
             return integer(1);
@@ -798,6 +817,8 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public BulkReply spop() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return NIL_REPLY;
+
         Random random = new Random();
         Integer rand = random.nextInt(scard().data().intValue());
         Set rands = new HashSet();
@@ -817,7 +838,7 @@ public class SetMeta extends BaseMeta {
             throw new RedisException(e.getMessage());
         }
 
-        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_SET_MEMBER)));
+        singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_SET_MEMBER)));
 
         return new BulkReply(setNode.parseMember(getKey0(),keyList.get(0)));
 
@@ -842,6 +863,8 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public Reply srandmember(byte[] count1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return NIL_REPLY;
+
         long cnt = bytesToNum(count1);
 
         //绝对值
@@ -889,6 +912,8 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply srem(byte[]... member1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return integer(0);
+
 
         for (byte[] hkey : member1) {
             setNode.genKey1(getKey0(), hkey).srem();
@@ -896,7 +921,7 @@ public class SetMeta extends BaseMeta {
 
         //todo 重新计数；增加一个异步计数队列 ；先使用异步线程，后续使用异步队列替换；
 
-        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_SET_MEMBER)));
+        singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_SET_MEMBER)));
 
         return integer(member1.length);
     }
@@ -910,6 +935,8 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply sunion(byte[]... key0) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return EMPTY;
+
         Set set = _sunion(key0);
         debugBytebuf(set);
         return _setreply(set);
@@ -948,21 +975,23 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply sunionstore(byte[] destination0, byte[]... key1) throws RedisException {
-
-        //判断类型，非set 类型返回异常信息；
-        int type = getMeta().getType();
-
-        if (type != -1 && type != DataType.KEY_SET) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return integer(0);
+//
+//
+//        //判断类型，非set 类型返回异常信息；
+//        int type = getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_SET) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
         Set<ByteBuf> set = _sunion(key1);
 
         IntegerReply store = store(destination0, set);
 
-        genMetaKey(destination0);
-        singleThreadExecutor.execute(new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_SET_MEMBER)));
+        metaKey=getMetaKey(destination0);
+        singleThreadExecutor.execute(new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_SET_MEMBER)));
 
         return store;
     }
@@ -978,17 +1007,21 @@ public class SetMeta extends BaseMeta {
      * @throws RedisException
      */
     public StatusReply sadd(byte[]... members) throws RedisException {
+
         if (members.length == 0) {
             throw new RedisException("wrong number of arguments for SADD");
         }
 
-        //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();
+//        //判断类型，非hash 类型返回异常信息；
+//        int type = getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_SET) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
-        if (type != -1 && type != DataType.KEY_SET) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_SET)) return QUIT;
+
 
         for (int i = 0; i < members.length; i++) {
             members[i] = setNode.genKey1(getKey0(), members[i]).getKey();
@@ -1000,7 +1033,7 @@ public class SetMeta extends BaseMeta {
         setNode.sadd(members);
 
         //后台线程计数
-        MetaCountCaller taskCnt = new MetaCountCaller(db, getKey(), genKeyPartten(DataType.KEY_SET_MEMBER));
+        MetaCountCaller taskCnt = new MetaCountCaller(db, getKey0(), genKeyPartten(DataType.KEY_SET_MEMBER));
         singleThreadExecutor.execute(taskCnt);
 
         return OK;
@@ -1010,112 +1043,112 @@ public class SetMeta extends BaseMeta {
 
 
     public static void main(String[] args) throws Exception {
-        testSet();
+//        testSet();
 
     }
 
-    /**
-     * Hash数据集测试
-     *
-     * @throws RedisException
-     */
-    private static void testSet() throws RedisException, InterruptedException {
-
-        SetMeta setMeta = SetMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        setMeta.genMetaKey("SetUpdate".getBytes()).deleteRange(setMeta.getKey0());
-        Assert.assertEquals(setMeta.sismember("f1".getBytes()).data().intValue(),0);
-
-        setMeta.genMetaKey("SetUpdate".getBytes()).sadd("f1".getBytes(), "f2".getBytes());
-        Assert.assertEquals(1, setMeta.sismember("f1".getBytes()).data().intValue());
-
-        Thread.sleep(200);
-
-        Assert.assertEquals(2, setMeta.scard().data().intValue());
-        Assert.assertEquals(2, setMeta.getMeta().getCount());
-//        Assert.assertEquals(2, setMeta.smembers().getCount());
-
-        IntegerReply smove = setMeta.smove("SetUpdate".getBytes(), "SetMove".getBytes(), "f2".getBytes());
-
-        Thread.sleep(200);
-        log.debug(smove.data().intValue());
-
-        Assert.assertEquals(0, setMeta.genMetaKey("SetUpdate".getBytes()).sismember("f2".getBytes()).data().intValue());
-        Assert.assertEquals(1, setMeta.scard().data().intValue());
-        Assert.assertEquals(1, setMeta.genMetaKey("SetMove".getBytes()).sismember("f2".getBytes()).data().intValue());
-        Assert.assertEquals(1, setMeta.scard().data().intValue());
-
-
-
-        //////////////////////////////////
-        setMeta.genMetaKey("SetA".getBytes()).deleteRange(setMeta.getKey0());
-        setMeta.genMetaKey("SetB".getBytes()).deleteRange(setMeta.getKey0());
-        setMeta.genMetaKey("SetC".getBytes()).deleteRange(setMeta.getKey0());
-
-        setMeta.genMetaKey("SetA".getBytes()).sadd("a".getBytes(), "b".getBytes(), "c".getBytes(), "d".getBytes());
-        setMeta.genMetaKey("SetB".getBytes()).sadd("c".getBytes(), "d".getBytes(), "e".getBytes(), "f".getBytes());
-        setMeta.genMetaKey("SetC".getBytes()).sadd("i".getBytes(), "j".getBytes(), "c".getBytes(), "d".getBytes());
-        Thread.sleep(500);
-
-        Assert.assertEquals(setMeta.genMetaKey("SetA".getBytes()).getMeta().getCount(),4);
-        Assert.assertEquals(setMeta.genMetaKey("SetB".getBytes()).getMeta().getCount(),4);
-        Assert.assertEquals(setMeta.genMetaKey("SetC".getBytes()).getMeta().getCount(),4);
-
-        String[] sdiffstr = {"a", "b"};
-        String[] sinterstr = {"c", "d"};
-        String[] sunionstr = {"a", "b","c","d","e","f","i","j"};
-
-        //差集
-        MultiBulkReply sdiff = setMeta.sdiff("SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
-        Assert.assertEquals(Arrays.asList(sdiffstr).toString(),sdiff.asStringSet(Charset.defaultCharset()).toString());
-        //交集
-        MultiBulkReply sinter = setMeta.sinter("SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
-        Assert.assertEquals(Arrays.asList(sinterstr).toString(),sinter.asStringList(Charset.defaultCharset()).toString());
-        //并集
-        MultiBulkReply sunion = setMeta.sunion("SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
-        Assert.assertEquals(Arrays.asList(sunionstr).toString(),sunion.asStringList(Charset.defaultCharset()).toString());
-
-
-        log.debug(sdiff.asStringList(Charset.defaultCharset()));
-        log.debug(sinter.asStringList(Charset.defaultCharset()));
-        log.debug(sunion.asStringList(Charset.defaultCharset()));
-
-        setMeta.sdiffstore("SetDiff".getBytes(),"SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
-        setMeta.sinterstore("SetInter".getBytes(),"SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
-        setMeta.sunionstore("SetUnion".getBytes(),"SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
-
-        log.debug(setMeta.genMetaKey("SetDiff".getBytes()).smembers().asStringList(Charset.defaultCharset()));
-        log.debug(setMeta.genMetaKey("SetInter".getBytes()).smembers().asStringList(Charset.defaultCharset()));
-        log.debug(setMeta.genMetaKey("SetUnion".getBytes()).smembers().asStringList(Charset.defaultCharset()));
-
-        Assert.assertEquals(Arrays.asList(sdiffstr).toString(),setMeta.genMetaKey("SetDiff".getBytes()).smembers().asStringList(Charset.defaultCharset()).toString());
-        Assert.assertEquals(Arrays.asList(sinterstr).toString(),setMeta.genMetaKey("SetInter".getBytes()).smembers().asStringList(Charset.defaultCharset()).toString());
-        Assert.assertEquals(Arrays.asList(sunionstr).toString(),setMeta.genMetaKey("SetUnion".getBytes()).smembers().asStringList(Charset.defaultCharset()).toString());
-
-        ///////////////////////////////////////////
-
-        String randstr = setMeta.genMetaKey("SetUnion".getBytes()).spop().asUTF8String();
-        log.debug(randstr);
-        Assert.assertNotNull(randstr);
-
-        Thread.sleep(100);
-
-        Assert.assertEquals(7,setMeta.genMetaKey("SetUnion".getBytes()).scard().data().intValue());
-
-
-        MultiBulkReply srandmember = (MultiBulkReply) setMeta.genMetaKey("SetUnion".getBytes()).srandmember("3".getBytes());
-
-        log.debug((srandmember.asStringList(Charset.defaultCharset())));
-        Assert.assertEquals(srandmember.data().length,3);
-
-         srandmember = (MultiBulkReply) setMeta.genMetaKey("SetUnion".getBytes()).srandmember("1".getBytes());
-        Assert.assertEquals(srandmember.data().length,1);
-
-        srandmember = (MultiBulkReply) setMeta.genMetaKey("SetUnion".getBytes()).srandmember("5".getBytes());
-        Assert.assertEquals(srandmember.data().length,5);
-
-
-        log.debug("Over ... ...");
-
-    }
+//    /**
+//     * Hash数据集测试
+//     *
+//     * @throws RedisException
+//     */
+//    private static void testSet() throws RedisException, InterruptedException {
+//
+//        SetMeta setMeta = SetMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+//        setMeta.genMetaKey("SetUpdate".getBytes()).clearMetaDataNodeData(setMeta.getKey0());
+//        Assert.assertEquals(setMeta.sismember("f1".getBytes()).data().intValue(),0);
+//
+//        setMeta.genMetaKey("SetUpdate".getBytes()).sadd("f1".getBytes(), "f2".getBytes());
+//        Assert.assertEquals(1, setMeta.sismember("f1".getBytes()).data().intValue());
+//
+//        Thread.sleep(200);
+//
+//        Assert.assertEquals(2, setMeta.scard().data().intValue());
+//        Assert.assertEquals(2, setMeta.getMeta().getCount());
+////        Assert.assertEquals(2, setMeta.smembers().getCount());
+//
+//        IntegerReply smove = setMeta.smove("SetUpdate".getBytes(), "SetMove".getBytes(), "f2".getBytes());
+//
+//        Thread.sleep(200);
+//        log.debug(smove.data().intValue());
+//
+//        Assert.assertEquals(0, setMeta.genMetaKey("SetUpdate".getBytes()).sismember("f2".getBytes()).data().intValue());
+//        Assert.assertEquals(1, setMeta.scard().data().intValue());
+//        Assert.assertEquals(1, setMeta.genMetaKey("SetMove".getBytes()).sismember("f2".getBytes()).data().intValue());
+//        Assert.assertEquals(1, setMeta.scard().data().intValue());
+//
+//
+//
+//        //////////////////////////////////
+//        setMeta.genMetaKey("SetA".getBytes()).clearMetaDataNodeData(setMeta.getKey0());
+//        setMeta.genMetaKey("SetB".getBytes()).clearMetaDataNodeData(setMeta.getKey0());
+//        setMeta.genMetaKey("SetC".getBytes()).clearMetaDataNodeData(setMeta.getKey0());
+//
+//        setMeta.genMetaKey("SetA".getBytes()).sadd("a".getBytes(), "b".getBytes(), "c".getBytes(), "d".getBytes());
+//        setMeta.genMetaKey("SetB".getBytes()).sadd("c".getBytes(), "d".getBytes(), "e".getBytes(), "f".getBytes());
+//        setMeta.genMetaKey("SetC".getBytes()).sadd("i".getBytes(), "j".getBytes(), "c".getBytes(), "d".getBytes());
+//        Thread.sleep(500);
+//
+//        Assert.assertEquals(setMeta.genMetaKey("SetA".getBytes()).getMeta().getCount(),4);
+//        Assert.assertEquals(setMeta.genMetaKey("SetB".getBytes()).getMeta().getCount(),4);
+//        Assert.assertEquals(setMeta.genMetaKey("SetC".getBytes()).getMeta().getCount(),4);
+//
+//        String[] sdiffstr = {"a", "b"};
+//        String[] sinterstr = {"c", "d"};
+//        String[] sunionstr = {"a", "b","c","d","e","f","i","j"};
+//
+//        //差集
+//        MultiBulkReply sdiff = setMeta.sdiff("SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
+//        Assert.assertEquals(Arrays.asList(sdiffstr).toString(),sdiff.asStringSet(Charset.defaultCharset()).toString());
+//        //交集
+//        MultiBulkReply sinter = setMeta.sinter("SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
+//        Assert.assertEquals(Arrays.asList(sinterstr).toString(),sinter.asStringList(Charset.defaultCharset()).toString());
+//        //并集
+//        MultiBulkReply sunion = setMeta.sunion("SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
+//        Assert.assertEquals(Arrays.asList(sunionstr).toString(),sunion.asStringList(Charset.defaultCharset()).toString());
+//
+//
+//        log.debug(sdiff.asStringList(Charset.defaultCharset()));
+//        log.debug(sinter.asStringList(Charset.defaultCharset()));
+//        log.debug(sunion.asStringList(Charset.defaultCharset()));
+//
+//        setMeta.sdiffstore("SetDiff".getBytes(),"SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
+//        setMeta.sinterstore("SetInter".getBytes(),"SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
+//        setMeta.sunionstore("SetUnion".getBytes(),"SetA".getBytes(), "SetB".getBytes(), "SetC".getBytes());
+//
+//        log.debug(setMeta.genMetaKey("SetDiff".getBytes()).smembers().asStringList(Charset.defaultCharset()));
+//        log.debug(setMeta.genMetaKey("SetInter".getBytes()).smembers().asStringList(Charset.defaultCharset()));
+//        log.debug(setMeta.genMetaKey("SetUnion".getBytes()).smembers().asStringList(Charset.defaultCharset()));
+//
+//        Assert.assertEquals(Arrays.asList(sdiffstr).toString(),setMeta.genMetaKey("SetDiff".getBytes()).smembers().asStringList(Charset.defaultCharset()).toString());
+//        Assert.assertEquals(Arrays.asList(sinterstr).toString(),setMeta.genMetaKey("SetInter".getBytes()).smembers().asStringList(Charset.defaultCharset()).toString());
+//        Assert.assertEquals(Arrays.asList(sunionstr).toString(),setMeta.genMetaKey("SetUnion".getBytes()).smembers().asStringList(Charset.defaultCharset()).toString());
+//
+//        ///////////////////////////////////////////
+//
+//        String randstr = setMeta.genMetaKey("SetUnion".getBytes()).spop().asUTF8String();
+//        log.debug(randstr);
+//        Assert.assertNotNull(randstr);
+//
+//        Thread.sleep(100);
+//
+//        Assert.assertEquals(7,setMeta.genMetaKey("SetUnion".getBytes()).scard().data().intValue());
+//
+//
+//        MultiBulkReply srandmember = (MultiBulkReply) setMeta.genMetaKey("SetUnion".getBytes()).srandmember("3".getBytes());
+//
+//        log.debug((srandmember.asStringList(Charset.defaultCharset())));
+//        Assert.assertEquals(srandmember.data().length,3);
+//
+//         srandmember = (MultiBulkReply) setMeta.genMetaKey("SetUnion".getBytes()).srandmember("1".getBytes());
+//        Assert.assertEquals(srandmember.data().length,1);
+//
+//        srandmember = (MultiBulkReply) setMeta.genMetaKey("SetUnion".getBytes()).srandmember("5".getBytes());
+//        Assert.assertEquals(srandmember.data().length,5);
+//
+//
+//        log.debug("Over ... ...");
+//
+//    }
 
 }

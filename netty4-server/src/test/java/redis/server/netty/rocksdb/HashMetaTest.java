@@ -20,8 +20,12 @@ public class HashMetaTest {
   public  void testHash() throws RedisException, InterruptedException {
 
     HashMeta meta9 = HashMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-    //测试删除
-    meta9.genMetaKey("HashUpdate".getBytes()).deleteRange(meta9.getKey0());
+    //测试删除，清除缓存
+    HashMeta.metaCache.invalidateAll();
+    meta9.clearMetaDataNodeData("HashUpdate".getBytes());
+
+    meta9.genMetaKey("HashUpdate".getBytes());
+
 //        log.debug("hkeys0:"+meta9.members());
 
 
@@ -35,7 +39,7 @@ public class HashMetaTest {
     Thread.sleep(500);
 
 //        log.debug("cnt:"+meta9.getCount());
-    Assert.assertEquals(1, meta9.getMeta().getCount());
+    Assert.assertEquals(1, meta9.getCacheCount());
 
 
     meta9.genMetaKey("HashUpdate".getBytes()).hset("f2".getBytes(), "v2".getBytes());
@@ -43,7 +47,7 @@ public class HashMetaTest {
     Thread.sleep(500);
 
 //        log.debug("val:"+meta9.getVal0());
-    Assert.assertEquals(2, meta9.getMeta().getCount());
+    Assert.assertEquals(2, meta9.getCacheCount());
 
 //        log.debug("hkeys9:"+meta9.members());
 //        log.debug("hvals:"+meta9.hvals());
@@ -54,7 +58,7 @@ public class HashMetaTest {
     //引入
 
     HashMeta meta2 = HashMeta.getInstance(RocksdbRedis.mydata, "TEST1".getBytes());
-    meta2.genMetaKey("BATCH".getBytes()).deleteRange(meta2.getKey0());
+    meta2.genMetaKey("BATCH".getBytes()).clearMetaDataNodeData(meta2.getKey0());
 
 
     byte[] f1 = "f1".getBytes();

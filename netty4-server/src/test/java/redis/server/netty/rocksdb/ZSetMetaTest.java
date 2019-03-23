@@ -46,12 +46,13 @@ public class ZSetMetaTest {
     log.debug(squaresList);
     log.debug(squaresList1);
 
+    /////////
+
     ZSetMeta setMeta = ZSetMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-    setMeta.genMetaKey("ZSet".getBytes()).deleteRange(setMeta.getKey0());
+    setMeta.genMetaKey("ZSet".getBytes()).clearMetaDataNodeData(setMeta.getKey0());
     Assert.assertEquals(setMeta.zcard().data().intValue(), 0);
 
-    setMeta.genMetaKey("ZSet".getBytes()).
-            zadd("10".getBytes(), "f1".getBytes(),
+    setMeta.genMetaKey("ZSet".getBytes()).zadd("10".getBytes(), "f1".getBytes(),
                     "20".getBytes(), "f2".getBytes(),
                     "30".getBytes(), "f3".getBytes());
 

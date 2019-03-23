@@ -20,6 +20,8 @@ public class DataType {
   public static final byte[] KEY_SET_MEMBER = "6".getBytes();
   public static final int VAL_SET_MEMBER = 56;
   public static final int KEY_LIST = 7;
+  public static final int KEY_LIST_LINK = 12;
+
   public static final byte[] KEY_LIST_ELEMENT = "8".getBytes();
   public static final int VAL_LIST_ELEMENT = 58;
   public static final int KEY_ZSET = 11;
@@ -31,6 +33,7 @@ public class DataType {
 
   public static final int KEY_HYPERLOGLOG = 70;
   public static final int KEY_BLOOMFILTER = 80;
+  public static final int KEY_JSONPATH = 90;
 
 
 

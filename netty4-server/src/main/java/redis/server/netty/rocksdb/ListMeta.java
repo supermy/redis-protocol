@@ -6,6 +6,7 @@ import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.rocksdb.*;
+import org.supermy.util.MyUtils;
 import redis.netty4.*;
 import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
@@ -13,10 +14,13 @@ import redis.server.netty.utis.DataType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
+import static redis.netty4.MultiBulkReply.EMPTY;
 import static redis.netty4.StatusReply.OK;
+import static redis.netty4.StatusReply.QUIT;
 import static redis.server.netty.rocksdb.ListMeta.Meta.*;
 import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 import static redis.server.netty.rocksdb.RedisBase.notInteger;
@@ -48,42 +52,42 @@ public class ListMeta extends BaseMeta {
     }
 
 
-    private byte[] key;
-    private byte[] val;
+//    private byte[] key;
+//    private byte[] val;
 
 
-    private long ttl;
-    private int size;
+//    private long ttl;
+//    private int size;
 
+//
+//    public long getVal0() throws RedisException {
+//        print(metaVal);
+//        metaVal.resetReaderIndex();
+//        return metaVal.getLong(8 + 4 + 2);
+//    }
 
-    public long getVal0() throws RedisException {
-        print(metaVal);
-        metaVal.resetReaderIndex();
-        return metaVal.getLong(8 + 4 + 2);
-    }
+//    public void setVal0(long val0) throws RedisException {
+//        this.metaVal.setLong(8 + 4 + 2, val0);  //数量
+//    }
 
-    public void setVal0(long val0) throws RedisException {
-        this.metaVal.setLong(8 + 4 + 2, val0);  //数量
-    }
+//    public byte[] getVal() throws RedisException {
+//        this.metaVal.resetReaderIndex();
+//        return this.metaVal.readBytes(metaVal.readableBytes()).array();
+//    }
 
-    public byte[] getVal() throws RedisException {
-        this.metaVal.resetReaderIndex();
-        return this.metaVal.readBytes(metaVal.readableBytes()).array();
-    }
+//    public byte[] getVal(ByteBuf val) throws RedisException {
+//        val.resetReaderIndex();
+//        return val.readBytes(val.readableBytes()).array();
+//    }
 
-    public byte[] getVal(ByteBuf val) throws RedisException {
-        val.resetReaderIndex();
-        return val.readBytes(val.readableBytes()).array();
-    }
-
-    public long getTtl() {
-        return metaVal.getLong(0);
-    }
-
-    public int getType() throws RedisException {
-        if (metaVal == null) return -1;
-        return this.metaVal.getInt(8 + 1);
-    }
+//    public long getTtl() {
+//        return metaVal.getLong(0);
+//    }
+//
+//    public int getType() throws RedisException {
+//        if (metaVal == null) return -1;
+//        return this.metaVal.getInt(8 + 1);
+//    }
 
 
     protected static ListNode listNode;
@@ -107,6 +111,7 @@ public class ListMeta extends BaseMeta {
     public static ListMeta getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
+        instance.VAlTYPE = DataType.KEY_LIST;
         listNode = ListNode.getInstance(db0, ns0);
         return instance;
     }
@@ -118,326 +123,324 @@ public class ListMeta extends BaseMeta {
      * @return
      * @throws RedisException
      */
+    @Deprecated
     public ListMeta genMetaKey(byte[] key0) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("key0 主键不能为空"));
         }
-        instance.metaKey = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        instance.metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
         return instance;
     }
 
-
-    private ByteBuf genMetaVal(long count, long sseq, long eseq, long cseq) {
-
-        ByteBuf ttlBuf = Unpooled.buffer(12);
-
-        ttlBuf.writeLong(-1); //ttl 无限期 -1
-        ttlBuf.writeBytes(DataType.SPLIT);
-
-        ttlBuf.writeInt(DataType.KEY_LIST); //value type
-        ttlBuf.writeBytes(DataType.SPLIT);
-
-
-        ByteBuf val1 = Unpooled.buffer(32);
-        val1.writeLong(count);  //数量
-        val1.writeLong(sseq);    //第一个元素
-        val1.writeLong(eseq);    //最后一个元素
-        val1.writeLong(cseq);    //最新主键编号 //展示废弃不用
-
-        log.debug(String.format("count:%d 第一个元素：%d 最后一个元素：%d 自增主键：%d  value:%s", count, sseq, eseq, sseq, new String(val1.readBytes(val1.readableBytes()).array())));
-
-
-        val1.resetReaderIndex();
-        ttlBuf.resetReaderIndex();
-
-        return Unpooled.wrappedBuffer(ttlBuf, val1);
-
-    }
-
-    /**
-     * 创建meta key
-     *
-     * @param count
-     * @return
-     * @throws RedisException
-     */
-    protected ListMeta setMeta(long count, long sseq, long eseq, long cseq) throws RedisException {
-
-        this.metaVal = genMetaVal(count, sseq, eseq, cseq);
-
-        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
-
-        try {
-            db.put(getKey(), getVal());
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-
-        return this;
-    }
-
-    /**
-     * 获取meta 数据
-     *
-     * @return
-     * @throws RedisException
-     */
-    protected ListMeta getMeta() throws RedisException {
-
-        try {
-            byte[] value = db.get(getKey());
-            if (value == null) this.metaVal = null;
-            else
-                this.metaVal = Unpooled.wrappedBuffer(value);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
-
-    ///////////////
-    public ListMeta(RocksDB db0, byte[] key0, long count, long sseq, long eseq, long cseq) throws RedisException {
-        this.db = db0;
-        create(key0, count, sseq, eseq, cseq);
-    }
-
-
-    protected ListMeta create(byte[] key0, long count, long sseq, long eseq, long cseq) throws RedisException {
-
-        ByteBuf valbuf = genMetaVal(count, sseq, eseq, cseq);
-
-        try {
-            db.put(key, valbuf.readBytes(valbuf.readableBytes()).array());
-        } catch (RocksDBException e) {
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
-
-
-    /**
-     * 持久化数据到硬盘
-     *
-     * @throws RedisException
-     */
-    public void flush() throws RedisException {
-
-        try {
-            db.put(getKey(), getVal());
-        } catch (RocksDBException e) {
-            throw new RedisException(e.getMessage());
-        }
-    }
-
-
-    /**
-     * 元素数量
-     *
-     * @return
-     */
-    public long getCount() throws RedisException {
-        if (metaVal == null) return 0;
-
-        return get(COUNT);
-    }
-
-    public void setCount(long val) throws RedisException {
-        set(COUNT, val);
-    }
-
-    /**
-     * 首元素
-     *
-     * @return
-     */
-    public long getSseq() throws RedisException {
-        return get(SSEQ);
-    }
-
-    public void setSseq(long val) throws RedisException {
-        set(SSEQ, val);
-    }
-
-    /**
-     * 尾元素
-     *
-     * @return
-     */
-    public long getEseq() throws RedisException {
-        return get(ESEQ);
-    }
-
-    public void setEseq(long val) throws RedisException {
-        set(ESEQ, val);
-    }
-
-    /**
-     * 自增主键
-     *
-     * @return
-     */
-    public long getCseq() throws RedisException {
-        return get(CSEQ);
-    }
-
-    public void setCseq(long val) throws RedisException {
-        set(CSEQ, val);
-    }
-
-    public long incrCseq() throws RedisException {
-
-        long pval = Math.incrementExact(getCseq());
-        set(CSEQ, pval);
-        return pval;
-    }
-
-    /**
-     * 开始扩容
-     * @return
-     * @throws RedisException
-     */
-    public long incrSseq() throws RedisException {
-        long pval = Math.incrementExact(getSseq());
-        set(SSEQ, pval);
-        return pval;
-    }
-
-    /**
-     * 结束扩容
-     * @return
-     * @throws RedisException
-     */
-    public long decrEseq() throws RedisException {
-        long pval = Math.decrementExact(getEseq());
-        set(ESEQ, pval);
-        return pval;
-    }
-
-    public long incrCount() throws RedisException {
-        long pval = Math.incrementExact(getCount());
-        setCount(pval);
-        return pval;
-    }
-
-    public long decrCount() throws RedisException {
-        long pval = Math.decrementExact(getCount());
-        setCount(pval);
-        return pval;
-    }
-
-
-    /**
-     * 获取指针数据
-     *
-     * @param fd
-     * @return
-     */
-    private long get(Meta fd) throws RedisException {
-        long result = 0;
-
-//        if (metaVal==null) return result;
-
-        this.metaVal.resetReaderIndex();
-        int ttlSize = 8 + 4 + 2;
-        ByteBuf linkBuf = metaVal.slice(ttlSize, metaVal.readableBytes() - ttlSize);
-
-
-        switch (fd) {
-
-            case COUNT:
-                result = linkBuf.getLong(0);
-                break;
-
-            case SSEQ:
-                result = linkBuf.getLong(8);
-                break;
-
-            case ESEQ:
-                result = linkBuf.getLong(16);
-                break;
-
-            case CSEQ:
-                result = linkBuf.getLong(24);
-                break;
-
-            default:
-                log.debug("default");
-                throw new RedisException(String.format("没有如此的字段:%s", fd));
-        }
-        return result;
-    }
-
-    private long set(Meta fd, long pval) throws RedisException {
-        long result = 0;
-
-        //metaVal=Unpooled.wrappedBuffer(val);
-        int ttlSize = 8 + 4 + 2;
-
-
-        switch (fd) {
-
-            case COUNT:
-                metaVal.setLong(ttlSize, pval);
-                break;
-
-            case SSEQ:
-                metaVal.setLong(ttlSize + 8, pval);
-                break;
-
-            case ESEQ:
-                metaVal.setLong(ttlSize + 16, pval);
-                break;
-
-            case CSEQ:
-                metaVal.setLong(ttlSize + 24, pval);
-                break;
-
-            default:
-                log.debug("default");
-                throw new RedisException(String.format("没有如此的字段:%s", fd));
-        }
-        return result;
-    }
-
-    private long now() {
-        return System.currentTimeMillis();
-    }
-
-
-    public int getSize() {
-        return val.length;
-    }
-
-    public boolean isNew() throws RedisException {
-        return getCount() == 0;
-    }
-
-
-    public String info() throws RedisException {
-        StringBuilder sb = new StringBuilder("meta data ~ ");
-        sb.append(getKey0Str());
-        sb.append(":");
-        sb.append("  count=");
-        sb.append(getCount());
-
-        sb.append("  sseq=");
-        sb.append(getSseq());
-
-        sb.append("  eseq=");
-        sb.append(getEseq());
-
-        sb.append("  cseq=");
-        sb.append(getCseq());
-
-        log.debug(sb.toString());
-
-        return sb.toString();
-    }
+//
+//    private ByteBuf genMetaVal(long count, long sseq, long eseq, long cseq) {
+//
+//        ByteBuf ttlBuf = Unpooled.buffer(12);
+//
+//        ttlBuf.writeLong(-1); //ttl 无限期 -1
+//        ttlBuf.writeBytes(DataType.SPLIT);
+//
+//        ttlBuf.writeInt(DataType.KEY_LIST); //value type
+//        ttlBuf.writeBytes(DataType.SPLIT);
+//
+//
+//        ByteBuf val1 = Unpooled.buffer(32);
+//        val1.writeLong(count);  //数量
+//        val1.writeLong(sseq);    //第一个元素
+//        val1.writeLong(eseq);    //最后一个元素
+//        val1.writeLong(cseq);    //最新主键编号 //展示废弃不用
+//
+//        log.debug(String.format("count:%d 第一个元素：%d 最后一个元素：%d 自增主键：%d  value:%s", count, sseq, eseq, sseq, new String(val1.readBytes(val1.readableBytes()).array())));
+//
+//
+//        val1.resetReaderIndex();
+//        ttlBuf.resetReaderIndex();
+//
+//        return Unpooled.wrappedBuffer(ttlBuf, val1);
+//
+//    }
+
+//    /**
+//     * 创建meta key
+//     *
+//     * @param count
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected ListMeta setMeta(long count, long sseq, long eseq, long cseq) throws RedisException {
+//
+//        this.metaVal = genMetaVal(count, sseq, eseq, cseq);
+//
+////        log.debug(String.format("count:%d;  主键：%s; value:%s", count, getKey0Str(), getVal0()));
+//
+//        try {
+//            db.put(getKey(), getVal());
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//
+//        return this;
+//    }
+
+//    /**
+//     * 获取meta 数据
+//     *
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected ListMeta getMeta() throws RedisException {
+//
+//        try {
+//            byte[] value = db.get(getKey());
+//            if (value == null) this.metaVal = null;
+//            else
+//                this.metaVal = Unpooled.wrappedBuffer(value);
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
+
+//    ///////////////
+//    public ListMeta(RocksDB db0, byte[] key0, long count, long sseq, long eseq, long cseq) throws RedisException {
+//        this.db = db0;
+//        create(key0, count, sseq, eseq, cseq);
+//    }
+
+
+//    protected ListMeta create(byte[] key0, long count, long sseq, long eseq, long cseq) throws RedisException {
+//
+//        ByteBuf valbuf = genMetaVal(count, sseq, eseq, cseq);
+//
+//        try {
+//            db.put(key, valbuf.readBytes(valbuf.readableBytes()).array());
+//        } catch (RocksDBException e) {
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
+
+
+//    /**
+//     * 持久化数据到硬盘
+//     *
+//     * @throws RedisException
+//     */
+//    public void flush() throws RedisException {
+//
+//        try {
+//            db.put(getKey(), getVal());
+//        } catch (RocksDBException e) {
+//            throw new RedisException(e.getMessage());
+//        }
+//    }
+
+
+//    /**
+//     * 元素数量
+//     *
+//     * @return
+//     */
+//    public long getCount() throws RedisException {
+//        if (metaVal == null) return 0;
+//
+//        return get(COUNT);
+//    }
+
+//    public void setCount(long val) throws RedisException {
+//        set(COUNT, val);
+//    }
+
+//    /**
+//     * 首元素
+//     *
+//     * @return
+//     */
+//    public long getSseq() throws RedisException {
+//        return get(SSEQ);
+//    }
+
+//    public void setSseq(long val) throws RedisException {
+//        set(SSEQ, val);
+//    }
+
+//    /**
+//     * 尾元素
+//     *
+//     * @return
+//     */
+//    public long getEseq() throws RedisException {
+//        return get(ESEQ);
+//    }
+
+//    public void setEseq(long val) throws RedisException {
+//        set(ESEQ, val);
+//    }
+//
+//    /**
+//     * 自增主键
+//     *
+//     * @return
+//     */
+//    public long getCseq() throws RedisException {
+//        return get(CSEQ);
+//    }
+
+//    public void setCseq(long val) throws RedisException {
+//        set(CSEQ, val);
+//    }
+//
+//    public long incrCseq() throws RedisException {
+//
+//        long pval = Math.incrementExact(getCseq());
+//        set(CSEQ, pval);
+//        return pval;
+//    }
+
+//    /**
+//     * 开始扩容
+//     * @return
+//     * @throws RedisException
+//     */
+//    public long incrSseq() throws RedisException {
+//        long pval = Math.incrementExact(getSseq());
+//        set(SSEQ, pval);
+//        return pval;
+//    }
+
+//    /**
+//     * 结束扩容
+//     * @return
+//     * @throws RedisException
+//     */
+//    public long decrEseq() throws RedisException {
+//        long pval = Math.decrementExact(getEseq());
+//        set(ESEQ, pval);
+//        return pval;
+//    }
+
+//    public long incrCount() throws RedisException {
+//        long pval = Math.incrementExact(getCount());
+//        setCount(pval);
+//        return pval;
+//    }
+//
+//    public long decrCount() throws RedisException {
+//        long pval = Math.decrementExact(getCount());
+//        setCount(pval);
+//        return pval;
+//    }
+
+
+//    /**
+//     * 获取指针数据
+//     *
+//     * @param fd
+//     * @return
+//     */
+//    private long get(Meta fd) throws RedisException {
+//        long result = 0;
+//
+////        if (metaVal==null) return result;
+//
+//        this.metaVal.resetReaderIndex();
+//        int ttlSize = 8 + 4 + 2;
+//        ByteBuf linkBuf = metaVal.slice(ttlSize, metaVal.readableBytes() - ttlSize);
+//
+//
+//        switch (fd) {
+//
+//            case COUNT:
+//                result = linkBuf.getLong(0);
+//                break;
+//
+//            case SSEQ:
+//                result = linkBuf.getLong(8);
+//                break;
+//
+//            case ESEQ:
+//                result = linkBuf.getLong(16);
+//                break;
+//
+//            case CSEQ:
+//                result = linkBuf.getLong(24);
+//                break;
+//
+//            default:
+//                log.debug("default");
+//                throw new RedisException(String.format("没有如此的字段:%s", fd));
+//        }
+//        return result;
+//    }
+
+//    private long set(Meta fd, long pval) throws RedisException {
+//        long result = 0;
+//
+//        //metaVal=Unpooled.wrappedBuffer(val);
+//        int ttlSize = 8 + 4 + 2;
+//
+//
+//        switch (fd) {
+//
+//            case COUNT:
+//                metaVal.setLong(ttlSize, pval);
+//                break;
+//
+//            case SSEQ:
+//                metaVal.setLong(ttlSize + 8, pval);
+//                break;
+//
+//            case ESEQ:
+//                metaVal.setLong(ttlSize + 16, pval);
+//                break;
+//
+//            case CSEQ:
+//                metaVal.setLong(ttlSize + 24, pval);
+//                break;
+//
+//            default:
+//                log.debug("default");
+//                throw new RedisException(String.format("没有如此的字段:%s", fd));
+//        }
+//        return result;
+//    }
+
+
+
+//    public int getSize() {
+//        return val.length;
+//    }
+//
+//    public boolean isNew() throws RedisException {
+//        return getCount() == 0;
+//    }
+
+
+//    public String info() throws RedisException {
+//        StringBuilder sb = new StringBuilder("meta data ~ ");
+//        sb.append(getKey0Str());
+//        sb.append(":");
+//        sb.append("  count=");
+//        sb.append(getCount());
+//
+//        sb.append("  sseq=");
+//        sb.append(getSseq());
+//
+//        sb.append("  eseq=");
+//        sb.append(getEseq());
+//
+//        sb.append("  cseq=");
+//        sb.append(getCseq());
+//
+//        log.debug(sb.toString());
+//
+//        return sb.toString();
+//    }
 
 
     //meta value 存储cnt,其他的不存储
@@ -447,16 +450,15 @@ public class ListMeta extends BaseMeta {
     //lastNode
     // push:id(create) pop  ;if is empty  id=1  else decr
 
-    /**
-     * 构建子元素扫描key
-     *
-     * @param filedType
-     * @return
-     */
-    public byte[] genKeyPartten(byte[] filedType) throws RedisException {
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(NS, DataType.SPLIT, getKey0(), DataType.SPLIT, filedType, DataType.SPLIT);
-        return byteBuf.readBytes(byteBuf.readableBytes()).array();
-    }
+//    /**
+//     * 构建子元素扫描key
+//     *
+//     * @param filedType
+//     * @return
+//     */
+//    public byte[] genKeyPartten(byte[] filedType) throws RedisException {
+//        return super.genKeyPartten(filedType);
+//    }
 
 
     /**
@@ -563,13 +565,15 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply lpush(byte[]... value1) throws RedisException {
-        //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return integer(0);
 
-        if (type != -1 && type != DataType.KEY_LIST) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+//        //判断类型，非hash 类型返回异常信息；
+//        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
+//
+//        if (type != -1 && type != DataType.KEY_LIST) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
         //批量处理
         final WriteOptions writeOpt = new WriteOptions();
@@ -586,36 +590,45 @@ public class ListMeta extends BaseMeta {
 
             if (firstNode==null){
 
-                listNode.genKey(getKey0(), System.currentTimeMillis()).put(val1, -1, -1);//后面两个参数无用
+                listNode.genKey(getKey0(), now()).put(val1, -1, -1);//后面两个参数无用
 
-                setMeta(1, listNode.getSeq(), listNode.getSeq(), listNode.getSeq());//fixme
+//                setMeta(1, listNode.getSeq(), listNode.getSeq(), listNode.getSeq());//fixme
+                metaVal=getMetaVal(1,-1);
+                metaCache.put(Unpooled.wrappedBuffer(getKey0()),metaVal);
 
-                setCseq(listNode.getSeq());
-                log.debug(listNode.getSeq());
-                setSseq(listNode.getSeq());
-                setEseq(listNode.getSeq());
+
+//                setCseq(listNode.getSeq());
+//                log.debug(listNode.getSeq());
+//                setSseq(listNode.getSeq());
+//                setEseq(listNode.getSeq());
 
             }else{
                 firstNode.info();
 //                log.debug(new String(firstNode.getKey0()));
-                log.debug(firstNode.getSeq());
+//                log.debug(firstNode.getSeq());
 
                 listNode.genKey(getKey0(), firstNode.decrSEQ()).put(val1, -1, -1);//后面两个参数无用
 
-                log.debug(listNode.getSeq());
+//                log.debug(listNode.getSeq());
+//
+//                setSseq(listNode.getSeq());
+//
+//                incrCount();
+                log.debug(getCount());
+                metaVal=getMetaVal(Math.incrementExact(getCount()),-1);
+                metaCache.put(Unpooled.wrappedBuffer(getKey0()),metaVal);
 
-                setSseq(listNode.getSeq());
-
-                incrCount();
             }
 
             listNode.info();
 
 
-            this.info();
+//            this.info();
         }
 
-        this.flush();
+//        this.flush();
+
+
 
         return integer(value1.length);
 
@@ -631,13 +644,15 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply rpush(byte[]... value1) throws RedisException {
-        //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
-
-        if (type != -1 && type != DataType.KEY_LIST) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return integer(0);
+//
+//        //判断类型，非hash 类型返回异常信息；
+//        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
+//
+//        if (type != -1 && type != DataType.KEY_LIST) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
 
         //批量处理
@@ -651,36 +666,45 @@ public class ListMeta extends BaseMeta {
             ListNode lastNode = getLastNode();
 
             if (lastNode == null){
-                listNode.genKey(getKey0(), System.currentTimeMillis()).put(val1, -1, -1);//后面两个参数无用
+                listNode.genKey(getKey0(), now()).put(val1, -1, -1);//后面两个参数无用
 
-                setMeta(1, listNode.getSeq(), listNode.getSeq(), listNode.getSeq());//fixme
+                //修改缓存中的计数
+                metaVal=getMetaVal(1,-1);
+                metaCache.put(Unpooled.wrappedBuffer(getKey0()),metaVal);
+//                setMeta(1, listNode.getSeq(), listNode.getSeq(), listNode.getSeq());//fixme
 
-                setCseq(listNode.getSeq());
-                setSseq(listNode.getSeq());
-                setEseq(listNode.getSeq());
-
-                log.debug(listNode.getSeq());
+//                setCseq(listNode.getSeq());
+//                setSseq(listNode.getSeq());
+//                setEseq(listNode.getSeq());
+//
+//                log.debug(listNode.getSeq());
 
 
             }else{
 
                 lastNode.info();
-                log.debug(lastNode.getSeq());
+//                log.debug(lastNode.getSeq());
 
                 listNode.genKey(getKey0(), lastNode.incrSEQ()).put(val1, -1, -1);//后面两个参数无用
 
-                log.debug(listNode.getSeq());
+//                log.debug(listNode.getSeq());
+//
+//                setEseq(listNode.getSeq());
 
-                setEseq(listNode.getSeq());
-                incrCount();
+                //incr count
+                metaVal=getMetaVal(Math.incrementExact(getCount()),-1);
+                metaCache.put(Unpooled.wrappedBuffer(getKey0()),metaVal);
+
+//                incrCount();
 
             }
             listNode.info();
 
-            this.info();
+//            this.info();
         }
 
-        this.flush();
+
+//        this.flush();
 
         return integer(value1.length);
 
@@ -693,11 +717,16 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public BulkReply lpop() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return NIL_REPLY;
+
         ListNode firstNode = getFirstNode();
         if (firstNode==null) return NIL_REPLY;
 
-        this.decrCount();
-        this.flush();
+//        this.decrCount();
+        metaVal=getMetaVal(Math.decrementExact(getCount()),-1);
+        metaCache.put(Unpooled.wrappedBuffer(getKey0()),metaVal);
+
+//        this.flush();
         firstNode.del();
 //        getFirstNode().setPseq(-1).flush();
         return new BulkReply(firstNode.getVal0());
@@ -710,11 +739,15 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public BulkReply rpop() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return NIL_REPLY;
+
         ListNode lastNode = getLastNode();
         if (lastNode==null) return NIL_REPLY;
 
-        this.decrCount();
-        this.flush();
+//        this.decrCount();
+        metaVal=getMetaVal(Math.decrementExact(getCount()),-1);
+        metaCache.put(Unpooled.wrappedBuffer(getKey0()),metaVal);
+//        this.flush();
         lastNode.del();
         return new BulkReply(lastNode.getVal0());
     }
@@ -727,6 +760,8 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply llen() throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return integer(0);
+
         long l = countBy(db, genKeyPartten(DataType.KEY_LIST_ELEMENT));
 
         return integer(l);
@@ -914,7 +949,6 @@ public class ListMeta extends BaseMeta {
      *
      * @param db
      * @param pattern0
-     * @param reverse
      * @param start
      * @param stop
      * @return
@@ -974,6 +1008,8 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public BulkReply lindex(byte[] index1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return NIL_REPLY;
+
         long i = RocksdbRedis.bytesToInt(index1);
 
         if (i<0){
@@ -1003,6 +1039,8 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public MultiBulkReply lrange(byte[] start1, byte[] stop2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return EMPTY;
+
         long s = RocksdbRedis.__torange(start1, getCount());
         long e = RocksdbRedis.__torange(stop2, getCount());
 
@@ -1015,7 +1053,7 @@ public class ListMeta extends BaseMeta {
         List<ByteBuf> list = zgetBy(db, genKeyPartten(DataType.KEY_LIST_ELEMENT), s, e, false,false,null);
 
         if (list.isEmpty()){
-            return MultiBulkReply.EMPTY;
+            return EMPTY;
 
         }else{
             log.debug(list.size());
@@ -1042,14 +1080,16 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply lpushx(byte[] value1) throws RedisException {
-        //todo 判断列表是否存在
-        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
-
-        if (type != -1 && type != DataType.KEY_LIST) {
-            //抛出异常 类型不匹配
-            return integer(0);
-
-        }
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return integer(0);
+//
+//        //todo 判断列表是否存在
+//        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
+//
+//        if (type != -1 && type != DataType.KEY_LIST) {
+//            //抛出异常 类型不匹配
+//            return integer(0);
+//
+//        }
         return lpush(value1);
     }
 
@@ -1061,14 +1101,16 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply rpushx(byte[] value1) throws RedisException {
-        //todo 判断列表是否存在
-        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
-
-        if (type != -1 && type != DataType.KEY_LIST) {
-            //抛出异常 类型不匹配
-            return integer(0);
-
-        }
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return integer(0);
+//
+//        //todo 判断列表是否存在
+//        int type = getMeta().getType();//hashNode.typeBy(db, getKey());
+//
+//        if (type != -1 && type != DataType.KEY_LIST) {
+//            //抛出异常 类型不匹配
+//            return integer(0);
+//
+//        }
 
         return rpush(value1);
     }
@@ -1085,11 +1127,13 @@ public class ListMeta extends BaseMeta {
      */
 //    @Deprecated
     public BulkReply rpoplpush(byte[] source0, byte[] destination1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return NIL_REPLY;
 
 
         BulkReply rpop = rpop();
 
-        genMetaKey(destination1).rpush(rpop.data().array());
+        metaKey=getMetaKey(destination1);
+        rpush(rpop.data().array());
 
         return rpop;
 
@@ -1106,6 +1150,7 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public StatusReply lset(byte[] index1, byte[] value2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return QUIT;
 
         int i = RocksdbRedis.bytesToInt(index1);
 
@@ -1133,6 +1178,7 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public IntegerReply lrem(byte[] count1, byte[] value2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return integer(0);
 
         int i = RocksdbRedis.bytesToInt(count1);
 
@@ -1157,6 +1203,7 @@ public class ListMeta extends BaseMeta {
      * @throws RedisException
      */
     public StatusReply ltrim(byte[] start1, byte[] stop2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_LIST)) return QUIT;
 
 //        long s = RocksdbRedis.__torange(start1, getCount());
 //        long e = RocksdbRedis.__torange(stop2, getCount());
@@ -1200,14 +1247,14 @@ public class ListMeta extends BaseMeta {
 
     }
 
-
-    public void destory() throws RedisException {
-        try {
-            db.delete(getKey());
-        } catch (RocksDBException e) {
-            throw new RedisException(e.getMessage());
-        }
-    }
+//
+//    public void destory() throws RedisException {
+//        try {
+//            db.delete(getKey());
+//        } catch (RocksDBException e) {
+//            throw new RedisException(e.getMessage());
+//        }
+//    }
 
     /**
      * 尾节点
@@ -1248,180 +1295,180 @@ public class ListMeta extends BaseMeta {
 
 
     public static void main(String[] args) throws Exception {
-        testListL();
-        testListR();
+//        testListL();
+//        testListR();
     }
-
-    private static void testListR() throws RedisException {
-        //测试删除
-        ListMeta metaRPush = ListMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        metaRPush.genMetaKey("ListRight".getBytes()).deleteRange(metaRPush.getKey0());
-
-        //测试 rpush
-        byte[][] rpusharray = {"XXX".getBytes(), "YYY".getBytes(), "ZZZ".getBytes(), "111".getBytes(), "222".getBytes(), "333".getBytes()};
-
-        Assert.assertEquals(metaRPush.rpush(rpusharray).data().intValue(), 6);
-
-        Assert.assertEquals(metaRPush.getCount(), 6);
-        Assert.assertEquals(metaRPush.getSseq(), metaRPush.getCseq());
-
-        metaRPush.info();
-
-
-        String[] strings3 = {"XXX", "YYY", "ZZZ"};
-        Assert.assertEquals(metaRPush.lrange("0".getBytes(), "2".getBytes()).toString(), Arrays.asList(strings3).toString());
-
-
-        log.debug("========================2 !!!");
-
-        ListNode n3 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-
-        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+0).get().info();
-        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+1).get().info();
-        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+2).get().info();
-        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+3).get().info();
-        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+4).get().info();
-        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+5).get().info();
-
-
-        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+2).get();
-
-        Assert.assertEquals(n3.getSize(), 3);
-
-        Assert.assertArrayEquals(n3.getVal0(), "ZZZ".getBytes());
-        log.debug("========================1 !!!");
-
-        ListNode n2 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        n2.genKey("ListRight".getBytes(), metaRPush.getCseq()+1).get();
-
-        Assert.assertEquals(n2.getSize(), 3);
-
-        Assert.assertArrayEquals(n2.getVal0(), "YYY".getBytes());
-        log.debug("========================0 !!!");
-
-
-
-        ListNode n1 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        n1.genKey("ListRight".getBytes(), metaRPush.getCseq()+0).get();
-
-        Assert.assertEquals(n1.getSize(), 3);
-        Assert.assertArrayEquals(n1.getVal0(), "XXX".getBytes());
-
-
-        Assert.assertArrayEquals(metaRPush.rpop().data().array(), "333".getBytes());
-
-        Assert.assertEquals(metaRPush.getCount(), 5);
-
-        Assert.assertEquals(metaRPush.llen().data().intValue(), 5);
-    }
-
-    /**
-     * 左侧插入数据集测试
-     *
-     * @throws RedisException
-     */
-    private static void testListL() throws RedisException {
-
-        ListMeta metaLPush = ListMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        metaLPush.genMetaKey("LPUSH".getBytes()).deleteRange(metaLPush.getKey0());
-
-        byte[][] lpusharray = {"XXX".getBytes(), "YYY".getBytes(), "ZZZ".getBytes(), "111".getBytes(), "222".getBytes(), "333".getBytes()};
-        Assert.assertEquals(metaLPush.lpush(lpusharray).data().intValue(), 6);
-
-        Assert.assertEquals(metaLPush.getCount(), 6);
-        log.debug(metaLPush.getSseq());
-//        Assert.assertEquals(metaLPush.getSseq(), metaLPush.getCseq());
-        Assert.assertEquals(metaLPush.getEseq(), metaLPush.getCseq());
-//        Assert.assertEquals(metaLPush.getCseq(), 5);
-        Assert.assertArrayEquals("LPUSH".getBytes(), metaLPush.getKey0());
-
-
-        log.debug("========================2 !!!");
-
-        ListNode n3 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
-        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-2).get();
-        n3.info();
-
-        Assert.assertEquals(n3.getSize(), 3);
-
-        Assert.assertArrayEquals(n3.getVal0(), "ZZZ".getBytes());
-
-        log.debug("========================1 !!!");
-
-        ListNode n2 = n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-1).get();
-
-        Assert.assertEquals(n2.getSize(), 3);
-
-        Assert.assertArrayEquals(n2.getVal0(), "YYY".getBytes());
-        log.debug("========================0 !!!");
-
-
-        ListNode n1 = n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-0).get();
-
-        Assert.assertEquals(n1.getSize(), 3);
-        Assert.assertArrayEquals(n1.getVal0(), "XXX".getBytes());
-
-        log.debug("========================LPOP !!!");
-
-        Assert.assertArrayEquals(metaLPush.lpop().data().array(), "333".getBytes());
-
-        Assert.assertEquals(metaLPush.getCount(), 5);
-        Assert.assertEquals(metaLPush.getSseq(), metaLPush.getCseq()-metaLPush.getCount());
-
-        Assert.assertEquals(metaLPush.llen().data().intValue(), 5);
-
-        log.debug("========================1 LINDEX !!!");
-
-
-        Assert.assertEquals(toString(metaLPush.lindex("1".getBytes()).data()), "111");
-
-        Assert.assertEquals(metaLPush.lset("1".getBytes(), "Modify".getBytes()), OK);
-
-
-        Assert.assertEquals(toString(metaLPush.lindex("1".getBytes()).data()), "Modify");
-
-        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 5);
-
-        log.debug("========================2 LRANGE !!!");
-
-        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-0).get().info();
-        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-1).get().info();
-        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-2).get().info();
-        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-3).get().info();
-        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-4).get().info();
-
-        log.debug("========================2 LRANGE !!!");
-
-        String[] strings = {"222", "Modify", "ZZZ"};
-        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "2".getBytes()).toString(), Arrays.asList(strings).toString());
-
-//        log.debug("*********count 111:"+metaLPush.getCount());
-        Assert.assertEquals(metaLPush.lrem("1".getBytes(), "Modify".getBytes()).data().intValue(), 1);
-
-
-
-//        log.debug("**********count 222:"+metaLPush.getCount());
-
-        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 4);
-
-        log.debug("--------------------------- !!!");
-
-
-        String[] strings1 = {"222", "ZZZ", "YYY", "XXX"};
-
-        metaLPush.info();
-
-        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings1).toString());
-
-        Assert.assertEquals(metaLPush.ltrim("1".getBytes(), "2".getBytes()).toString(), "OK");
-
-        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 2);
-        String[] strings2 = {"ZZZ", "YYY"};
-        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings2).toString());
-
-//        Assert.fail(metaLPush.linsert("BEFORE".getBytes(), "YYY".getBytes(), "OOO".getBytes()));
-//        String[] strings3 = {"ZZZ", "OOO", "YYY"};
-//        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings3).toString());
-    }
+//
+//    private static void testListR() throws RedisException {
+//        //测试删除
+//        ListMeta metaRPush = ListMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+//        metaRPush.genMetaKey("ListRight".getBytes()).clearMetaDataNodeData(metaRPush.getKey0());
+//
+//        //测试 rpush
+//        byte[][] rpusharray = {"XXX".getBytes(), "YYY".getBytes(), "ZZZ".getBytes(), "111".getBytes(), "222".getBytes(), "333".getBytes()};
+//
+//        Assert.assertEquals(metaRPush.rpush(rpusharray).data().intValue(), 6);
+//
+//        Assert.assertEquals(metaRPush.getCount(), 6);
+//        Assert.assertEquals(metaRPush.getSseq(), metaRPush.getCseq());
+//
+//        metaRPush.info();
+//
+//
+//        String[] strings3 = {"XXX", "YYY", "ZZZ"};
+//        Assert.assertEquals(metaRPush.lrange("0".getBytes(), "2".getBytes()).toString(), Arrays.asList(strings3).toString());
+//
+//
+//        log.debug("========================2 !!!");
+//
+//        ListNode n3 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+//
+//        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+0).get().info();
+//        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+1).get().info();
+//        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+2).get().info();
+//        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+3).get().info();
+//        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+4).get().info();
+//        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+5).get().info();
+//
+//
+//        n3.genKey("ListRight".getBytes(), metaRPush.getCseq()+2).get();
+//
+//        Assert.assertEquals(n3.getSize(), 3);
+//
+//        Assert.assertArrayEquals(n3.getVal0(), "ZZZ".getBytes());
+//        log.debug("========================1 !!!");
+//
+//        ListNode n2 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+//        n2.genKey("ListRight".getBytes(), metaRPush.getCseq()+1).get();
+//
+//        Assert.assertEquals(n2.getSize(), 3);
+//
+//        Assert.assertArrayEquals(n2.getVal0(), "YYY".getBytes());
+//        log.debug("========================0 !!!");
+//
+//
+//
+//        ListNode n1 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+//        n1.genKey("ListRight".getBytes(), metaRPush.getCseq()+0).get();
+//
+//        Assert.assertEquals(n1.getSize(), 3);
+//        Assert.assertArrayEquals(n1.getVal0(), "XXX".getBytes());
+//
+//
+//        Assert.assertArrayEquals(metaRPush.rpop().data().array(), "333".getBytes());
+//
+//        Assert.assertEquals(metaRPush.getCount(), 5);
+//
+//        Assert.assertEquals(metaRPush.llen().data().intValue(), 5);
+//    }
+//
+//    /**
+//     * 左侧插入数据集测试
+//     *
+//     * @throws RedisException
+//     */
+//    private static void testListL() throws RedisException {
+//
+//        ListMeta metaLPush = ListMeta.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+//        metaLPush.genMetaKey("LPUSH".getBytes()).clearMetaDataNodeData(metaLPush.getKey0());
+//
+//        byte[][] lpusharray = {"XXX".getBytes(), "YYY".getBytes(), "ZZZ".getBytes(), "111".getBytes(), "222".getBytes(), "333".getBytes()};
+//        Assert.assertEquals(metaLPush.lpush(lpusharray).data().intValue(), 6);
+//
+//        Assert.assertEquals(metaLPush.getCount(), 6);
+//        log.debug(metaLPush.getSseq());
+////        Assert.assertEquals(metaLPush.getSseq(), metaLPush.getCseq());
+//        Assert.assertEquals(metaLPush.getEseq(), metaLPush.getCseq());
+////        Assert.assertEquals(metaLPush.getCseq(), 5);
+//        Assert.assertArrayEquals("LPUSH".getBytes(), metaLPush.getKey0());
+//
+//
+//        log.debug("========================2 !!!");
+//
+//        ListNode n3 = ListNode.getInstance(RocksdbRedis.mydata, "redis".getBytes());
+//        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-2).get();
+//        n3.info();
+//
+//        Assert.assertEquals(n3.getSize(), 3);
+//
+//        Assert.assertArrayEquals(n3.getVal0(), "ZZZ".getBytes());
+//
+//        log.debug("========================1 !!!");
+//
+//        ListNode n2 = n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-1).get();
+//
+//        Assert.assertEquals(n2.getSize(), 3);
+//
+//        Assert.assertArrayEquals(n2.getVal0(), "YYY".getBytes());
+//        log.debug("========================0 !!!");
+//
+//
+//        ListNode n1 = n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-0).get();
+//
+//        Assert.assertEquals(n1.getSize(), 3);
+//        Assert.assertArrayEquals(n1.getVal0(), "XXX".getBytes());
+//
+//        log.debug("========================LPOP !!!");
+//
+//        Assert.assertArrayEquals(metaLPush.lpop().data().array(), "333".getBytes());
+//
+//        Assert.assertEquals(metaLPush.getCount(), 5);
+//        Assert.assertEquals(metaLPush.getSseq(), metaLPush.getCseq()-metaLPush.getCount());
+//
+//        Assert.assertEquals(metaLPush.llen().data().intValue(), 5);
+//
+//        log.debug("========================1 LINDEX !!!");
+//
+//
+//        Assert.assertEquals(toString(metaLPush.lindex("1".getBytes()).data()), "111");
+//
+//        Assert.assertEquals(metaLPush.lset("1".getBytes(), "Modify".getBytes()), OK);
+//
+//
+//        Assert.assertEquals(toString(metaLPush.lindex("1".getBytes()).data()), "Modify");
+//
+//        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 5);
+//
+//        log.debug("========================2 LRANGE !!!");
+//
+//        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-0).get().info();
+//        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-1).get().info();
+//        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-2).get().info();
+//        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-3).get().info();
+//        n3.genKey("LPUSH".getBytes(), metaLPush.getCseq()-4).get().info();
+//
+//        log.debug("========================2 LRANGE !!!");
+//
+//        String[] strings = {"222", "Modify", "ZZZ"};
+//        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "2".getBytes()).toString(), Arrays.asList(strings).toString());
+//
+////        log.debug("*********count 111:"+metaLPush.getCount());
+//        Assert.assertEquals(metaLPush.lrem("1".getBytes(), "Modify".getBytes()).data().intValue(), 1);
+//
+//
+//
+////        log.debug("**********count 222:"+metaLPush.getCount());
+//
+//        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 4);
+//
+//        log.debug("--------------------------- !!!");
+//
+//
+//        String[] strings1 = {"222", "ZZZ", "YYY", "XXX"};
+//
+//        metaLPush.info();
+//
+//        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings1).toString());
+//
+//        Assert.assertEquals(metaLPush.ltrim("1".getBytes(), "2".getBytes()).toString(), "OK");
+//
+//        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).data().length, 2);
+//        String[] strings2 = {"ZZZ", "YYY"};
+//        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings2).toString());
+//
+////        Assert.fail(metaLPush.linsert("BEFORE".getBytes(), "YYY".getBytes(), "OOO".getBytes()));
+////        String[] strings3 = {"ZZZ", "OOO", "YYY"};
+////        Assert.assertEquals(metaLPush.lrange("0".getBytes(), "-1".getBytes()).toString(), Arrays.asList(strings3).toString());
+//    }
 
 }

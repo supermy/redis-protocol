@@ -61,20 +61,29 @@ public class MyUtils {
      * @return
      */
     public static ByteBuf concat(byte[]... byts){
-        ByteBuf buf= Unpooled.buffer();
+        ByteBuf buf= Unpooled.buffer(32);
         for (byte[] byt:byts){
             buf.writeBytes(byt);
         }
         return buf;
     }
 
+    /**
+     * 值Key时候需要注意读指针回复。
+     *
+     * @param buf
+     * @return
+     */
     public static byte[] toByteArray(ByteBuf buf) {
         buf.resetReaderIndex();
-        return buf.readBytes(buf.readableBytes()).array();
+        byte[] array = buf.readBytes(buf.readableBytes()).array();
+        buf.resetReaderIndex();
+        return array;
+
     }
 
     public static String ByteBuf2String(ByteBuf key) {
         key.resetReaderIndex();
-        return new String(key.array());
+        return new String(toByteArray(key));
     }
 }

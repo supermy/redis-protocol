@@ -514,7 +514,7 @@ public class ListLinkNode extends BaseNode {
         sb.append(" , TTL =");
         sb.append(getTtl());
 
-        sb.append(" , TYPE =");
+        sb.append(" , KEYTYPE =");
         sb.append(get(Meta.TYPE1));
 
         sb.append(" , SIZE =");

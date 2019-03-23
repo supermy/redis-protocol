@@ -127,7 +127,7 @@ public class BloomFilterMeta {
     private byte[] getKey0() {
         metaKey.resetReaderIndex();
         ByteBuf bb = metaKey.slice(NS.length + DataType.SPLIT.length, metaKey.readableBytes() - 8);
-        return bb.readBytes(bb.readableBytes()).array();
+        return bb.array();
     }
 
     private String getKey0Str() {
@@ -136,12 +136,12 @@ public class BloomFilterMeta {
 
     private byte[] getKey() {
         metaKey.resetReaderIndex();
-        return metaKey.readBytes(metaKey.readableBytes()).array();
+        return metaKey.array();
     }
 
 //    public void setKey0(byte[] key0)  {
 //        metaKey.resetReaderIndex();
-//        this.metaKey = Unpooled.wrappedBuffer(NS, key0, TYPE);
+//        this.metaKey = Unpooled.wrappedBuffer(NS, key0, KEYTYPE);
 //    }
 
 
@@ -339,7 +339,7 @@ public class BloomFilterMeta {
 //        byte[] end = byteBufEnd.readBytes(byteBufEnd.readableBytes()).array();
 //
 //        try {
-//            db9.deleteRange(begin, end);
+//            db9.clearMetaDataNodeData(begin, end);
 //        } catch (RocksDBException e) {
 //            e.printStackTrace();
 //            throw new RedisException(e.getMessage());
@@ -510,6 +510,8 @@ public class BloomFilterMeta {
         try {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             filter.writeTo(output);
+
+
             db.put(getMetaKey(getKey0()), getMetaVal(output.toByteArray(), -1));
         } catch (IOException | RocksDBException e) {
             e.printStackTrace();
@@ -563,8 +565,10 @@ public class BloomFilterMeta {
             filter.put(members[i]);
         }
 
+
         log.debug(String.format("BloomFitler实际数量:%s", filter.approximateElementCount()));
 
+//        bloomFilterCache.put(Unpooled.wrappedBuffer(getKey0()),filter);
 
         return integer(members.length);
     }
@@ -648,8 +652,8 @@ public class BloomFilterMeta {
         ByteBuf byteBufBegin = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT);
         ByteBuf byteBufEnd = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT, "z".getBytes());
 
-        byte[] begin = byteBufBegin.readBytes(byteBufBegin.readableBytes()).array();
-        byte[] end = byteBufEnd.readBytes(byteBufEnd.readableBytes()).array();
+        byte[] begin = byteBufBegin.array();
+        byte[] end = byteBufEnd.array();
 
         log.debug(String.format("begin %s -> end %s", new String(begin), new String(end)));
 
@@ -725,10 +729,18 @@ public class BloomFilterMeta {
                     byte[] value = db.get(getMetaKey(key0.array()));
 
                     //解析得到业务数据
-                    byte[] metaVal0 = getMetaVal0(MyUtils.concat(value));
+                    byte[] metaVal0 = getMetaVal0(Unpooled.wrappedBuffer(value));
+
+                    log.debug(1);
+                    log.debug(metaVal0.length);
 
                     ByteArrayInputStream input = new ByteArrayInputStream(metaVal0);
+
+                    log.debug(2);
+
                     BloomFilter<byte[]> filter = BloomFilter.readFrom(input, Funnels.byteArrayFunnel());
+
+                    log.debug(3);
 
                     log.debug(String.format("加载BloomFilter(误差率%s)从RocksDb: key %s  数量%s  初始验证：%s 修改验证：%s",
                             filter.expectedFpp(),

@@ -162,7 +162,7 @@ public class RocksJavaTest {
         Options options = new Options();
         options.setCreateIfMissing(true);
 
-        rocksDB = RocksDB.open(options, basePath()+dbPath);
+        rocksDB = RocksDB.open(options, basePath()+dbPath+"1");
         byte[] key = "Hello".getBytes();
         byte[] value = "World".getBytes();
         rocksDB.put(key, value);
@@ -332,7 +332,7 @@ public class RocksJavaTest {
 
     }
 
-    @Test
+//    @Test
     public  void main() throws RocksDBException {
         //
         // 通过两次获取数据，一次是 mulget key;一次是 mulget ttl ;一次是 mulget size ;

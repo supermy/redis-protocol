@@ -215,8 +215,8 @@ public class ZSetRankNode extends BaseNode{
 //
 //        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //优化 零拷贝
 //        //get field0 name
-//        int index = NS.length + metakey0.length + TYPE.length + 3;
-//        int length = value.length - NS.length - metakey0.length - TYPE.length - 3;
+//        int index = NS.length + metakey0.length + KEYTYPE.length + 3;
+//        int length = value.length - NS.length - metakey0.length - KEYTYPE.length - 3;
 //
 //        ByteBuf slice = valueBuf.slice(index, length);//fixme
 //
