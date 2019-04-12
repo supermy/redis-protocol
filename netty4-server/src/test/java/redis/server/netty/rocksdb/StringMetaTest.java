@@ -29,13 +29,16 @@ public class StringMetaTest {
 
         StringMeta metaString = StringMeta.getInstance(RocksdbRedis.mymeta, "redis".getBytes());
         metaString.genMetaKey("HashUpdate".getBytes()).del();
+        metaString.genMetaKey("HashInit".getBytes()).del();
 
         // 已经存在的 key
         metaString.get("HashUpdate".getBytes()).data();
+        log.debug(metaString.get("HashInit".getBytes()).asUTF8String());
         Assert.assertNull(metaString.get("HashInit".getBytes()).data());
 
 
         //测试创建
+        metaString.genMetaKey("key".getBytes()).del();
         metaString.set("key".getBytes(), "value".getBytes(), null);
 
         log.debug(metaString.get("key".getBytes()).asUTF8String());
@@ -50,10 +53,25 @@ public class StringMetaTest {
         Assert.assertArrayEquals("lu".getBytes(), metaString.getRange("key".getBytes(), "2".getBytes(), "3".getBytes()).data().array());
         Assert.assertArrayEquals("value".getBytes(), metaString.getset("key".getBytes(), "val".getBytes()).data().array());
 
+        metaString.genMetaKey("k1".getBytes()).del();
+        metaString.genMetaKey("k2".getBytes()).del();
+        metaString.genMetaKey("k3".getBytes()).del();
+        metaString.genMetaKey("k4".getBytes()).del();
+        metaString.genMetaKey("k5".getBytes()).del();
+        metaString.genMetaKey("k7".getBytes()).del();
+        metaString.genMetaKey("k8".getBytes()).del();
+        metaString.genMetaKey("k9".getBytes()).del();
 
         metaString.mset("k1".getBytes(), "v1".getBytes(), "k2".getBytes(), "v2".getBytes(), "k3".getBytes(), "v3".getBytes());
+
+        //Redis Msetnx 命令用于所有给定 key 都不存在时，同时设置一个或多个 key-value 对。
+        log.debug("msetnx ...... k1 k4 k5 ......begin");
         metaString.msetnx("k1".getBytes(), "va".getBytes(), "k4".getBytes(), "v4".getBytes(), "k5".getBytes(), "v5".getBytes());
+        log.debug("msetnx ...... k1 k4 k5 ......end");
+
+        log.debug("msetnx ...... k7 k8 k9 ......begin");
         metaString.msetnx("k7".getBytes(), "v7".getBytes(), "k8".getBytes(), "v8".getBytes(), "k9".getBytes(), "v9".getBytes());
+        log.debug("msetnx ...... k7 k8 k9 ......end");
 
         String[] strings5 = {"v1", "v2", "v3"};
         Assert.assertEquals(metaString.mget("k1".getBytes(), "k2".getBytes(), "k3".getBytes()).toString(), Arrays.asList(strings5).toString());

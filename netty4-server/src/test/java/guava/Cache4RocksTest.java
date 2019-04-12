@@ -837,7 +837,7 @@ public class Cache4RocksTest {
                             )
                     );
 
-                    return Unpooled.wrappedBuffer(value);
+                    return MyUtils.concat(value);
 //                    return Unpooled.copiedBuffer(value);
                 }
             });
@@ -851,9 +851,9 @@ public class Cache4RocksTest {
 
         ByteBuf key = Unpooled.wrappedBuffer("metaTest".getBytes());
 //        String key="metaTest";
-        ByteBuf val = Unpooled.wrappedBuffer("metaValue".getBytes());
+        ByteBuf val = MyUtils.concat("metaValue".getBytes());
         {
-            mymeta.put("metaTest".getBytes(), val.array());
+            mymeta.put("metaTest".getBytes(), MyUtils.toByteArray(val));
         }
 
         long count = 100000;
@@ -865,6 +865,8 @@ public class Cache4RocksTest {
             for (int i = 0; i < count + 1; i++) {
 //                ByteBuf val0 =  metaCache.get(key);//尽量放在循环体外，可以节约一半的时间；
                 ByteBuf val0 =  metaCache.get(key);//尽量放在循环体外，可以节约一半的时间；
+//                log.debug(MyUtils.ByteBuf2String(val));
+//                log.debug(MyUtils.ByteBuf2String(val0));
                 Assert.assertEquals(val,val0);
             }
             log.debug("-----------------1");
@@ -875,12 +877,17 @@ public class Cache4RocksTest {
                 log.debug(metaCache.get(key));
                 log.debug(MyUtils.ByteBuf2String(metaCache.get(key)));
 
-                val0.resetWriterIndex();
-                val0.resetReaderIndex();
-                val0.writeBytes("modify".getBytes());
+                //ByteBuf 自动扩容，缓存中的内容同步改变。
+//                val0.resetWriterIndex();
+//                val0.resetReaderIndex();
+                val0.setIndex(0,0);
+                val0.writeBytes("modify By JamesMo 2019-04-10 in BeiJing".getBytes());
 
                 log.debug(metaCache.get(key));
                 log.debug(MyUtils.ByteBuf2String(metaCache.get(key)));
+
+//                Assert.assertEquals("modify By JamesMo 2019-04-10 in BeiJing".getBytes(),metaCache.get(key));
+
 
             }
 

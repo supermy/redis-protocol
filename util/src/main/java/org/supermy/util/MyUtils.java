@@ -68,6 +68,14 @@ public class MyUtils {
         return buf;
     }
 
+    public static ByteBuf concat(ByteBuf... byts){
+        ByteBuf buf= Unpooled.buffer(32);
+        for (ByteBuf byt:byts){
+            buf.writeBytes(byt);
+        }
+        return buf;
+    }
+
     /**
      * 值Key时候需要注意读指针回复。
      *
@@ -83,7 +91,7 @@ public class MyUtils {
     }
 
     public static String ByteBuf2String(ByteBuf key) {
-        key.resetReaderIndex();
+//        key.resetReaderIndex();
         return new String(toByteArray(key));
     }
 }

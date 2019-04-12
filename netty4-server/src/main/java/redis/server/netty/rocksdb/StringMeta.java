@@ -2,12 +2,11 @@ package redis.server.netty.rocksdb;
 
 import com.google.common.base.Throwables;
 import com.google.common.cache.*;
-import com.google.common.primitives.Longs;
+import com.google.common.collect.BiMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
 import org.junit.Assert;
-import org.roaringbitmap.RoaringBitmap;
 import org.roaringbitmap.longlong.Roaring64NavigableMap;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -17,11 +16,11 @@ import org.supermy.util.MyUtils;
 import org.xerial.snappy.Snappy;
 import redis.netty4.*;
 import redis.server.netty.RedisException;
-import redis.server.netty.SimpleRedisServer;
 import redis.server.netty.utis.DataType;
 import redis.server.netty.utis.DbUtils;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -31,19 +30,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static java.lang.Integer.MAX_VALUE;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
 import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 import static redis.server.netty.rocksdb.RedisBase.notInteger;
 import static redis.server.netty.rocksdb.RocksdbRedis._toposint;
-import static redis.server.netty.rocksdb.RocksdbRedis._torange;
 import static redis.util.Encoding.bytesToNum;
 import static redis.util.Encoding.numToBytes;
 
-//import org.slf4j.Logger;
-//import org.slf4j.LoggerFactory;
 
 /**
  * String Meta 元素方便促常用操作
@@ -66,20 +61,20 @@ import static redis.util.Encoding.numToBytes;
  * <p>
  * todo 使用bitfield实现getbits和setbits
  */
-public class StringMeta {
+public class StringMeta extends BaseMeta {
 
     private static Logger log = Logger.getLogger(StringMeta.class);
 
 
     ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
 
-    private static RocksDB db;
+//    private static RocksDB db;
 
-    private static byte[] NS;
-    private static byte[] TYPE = DataType.KEY_META;
+//    private static byte[] NS;
+//    private static byte[] TYPE = DataType.KEY_META;
 
-    private ByteBuf metaKey;
-    private ByteBuf metaVal;
+//    private ByteBuf metaKey;
+//    private ByteBuf metaVal;
 
 
     private StringMeta() {
@@ -100,6 +95,7 @@ public class StringMeta {
     public static StringMeta getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
+        instance.VAlTYPE = DataType.KEY_STRING;
         return instance;
     }
 
@@ -110,29 +106,30 @@ public class StringMeta {
      * @return
      * @throws RedisException
      */
+    @Deprecated
     public StringMeta genMetaKey(byte[] key0) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("主键不能为空"));
         }
-        instance.metaKey = Unpooled.wrappedBuffer(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        instance.metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
         return instance;
     }
 
 
-    private byte[] getKey0() {
-        metaKey.resetReaderIndex();
-        ByteBuf bb = metaKey.slice(NS.length + DataType.SPLIT.length, metaKey.readableBytes() - 8);
-        return bb.readBytes(bb.readableBytes()).array();
-    }
+//    private byte[] getKey0() {
+//        metaKey.resetReaderIndex();
+//        ByteBuf bb = metaKey.slice(NS.length + DataType.SPLIT.length, metaKey.readableBytes() - 8);
+//        return bb.readBytes(bb.readableBytes()).array();
+//    }
 
-    private String getKey0Str() {
-        return new String(getKey0());
-    }
+//    private String getKey0Str() {
+//        return new String(getKey0());
+//    }
 
-    private byte[] getKey() {
-        metaKey.resetReaderIndex();
-        return metaKey.readBytes(metaKey.readableBytes()).array();
-    }
+//    private byte[] getKey() {
+//        metaKey.resetReaderIndex();
+//        return metaKey.readBytes(metaKey.readableBytes()).array();
+//    }
 
 //    public void setKey0(byte[] key0)  {
 //        metaKey.resetReaderIndex();
@@ -149,31 +146,28 @@ public class StringMeta {
         }
     }
 
+
+    /**
+     * 返回业务数据
+     *
+     * @return
+     * @throws RedisException
+     */
     private byte[] getVal0() throws RedisException {
-        //test fixme
         metaVal.resetReaderIndex();
-        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
-        //数据过期处理
-        if (getTtl() < now() && getTtl() != -1) {
-            try {
-                db.delete(getKey());
-
-                metaVal = null;
-                metaKey = null;
-
-                return null;
-            } catch (RocksDBException e) {
-                e.printStackTrace();
-                throw new RedisException(e.getMessage());
-            }
+        ByteBuf valueBuf = metaVal.slice(8 + 4 + 8 + 3, metaVal.readableBytes() - 8 - 4 - 8 - 3);
+        if (valueBuf.readableBytes() == 0) {
+            return null;
         }
-        return valueBuf.readBytes(valueBuf.readableBytes()).array();
+        return MyUtils.toByteArray(valueBuf);
     }
+
 
     private String getVal0Str() throws RedisException {
         return new String(getVal0());
     }
 
+    @Deprecated
     protected StringMeta genVal(byte[] value, long expiration) {
 
         ByteBuf ttlBuf = Unpooled.buffer(12);
@@ -183,12 +177,15 @@ public class StringMeta {
         ttlBuf.writeInt(DataType.KEY_STRING); //value type
         ttlBuf.writeBytes(DataType.SPLIT);
 
-        ttlBuf.writeInt(value.length); //value size
+        ttlBuf.writeLong(value.length); //value size
         ttlBuf.writeBytes(DataType.SPLIT);
 
+        ttlBuf.writeBytes(value);
 
-        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //零拷贝
-        this.metaVal = Unpooled.wrappedBuffer(ttlBuf, valueBuf);//零拷贝
+//        ByteBuf valueBuf = Unpooled.wrappedBuffer(value); //零拷贝
+//        this.metaVal = MyUtils.concat(ttlBuf, valueBuf);//零拷贝
+
+        metaVal = ttlBuf;
 
 //      return valbuf.readBytes(valbuf.readableBytes()).array();
 
@@ -209,27 +206,31 @@ public class StringMeta {
 
             ByteBuf vvBuf = Unpooled.wrappedBuffer(values);
 
-            vvBuf.resetReaderIndex();
+//            vvBuf.resetReaderIndex();
 
-            ByteBuf ttlBuf = vvBuf.readSlice(8);
-            ByteBuf typeBuf = vvBuf.slice(8 + 1, 4);
-            ByteBuf sizeBuf = vvBuf.slice(8 + 1 + 4 + 1, 4);
+//            ByteBuf ttlBuf = vvBuf.readSlice(8);
+//            ByteBuf typeBuf = vvBuf.slice(8 + 1, 4);
+//            ByteBuf sizeBuf = vvBuf.slice(8 + 1 + 4 + 1, 4);
+//            ByteBuf sizeBuf = vvBuf.slice(8 + 1 + 4 + 1, 8); //size Long
 
-            ByteBuf valueBuf = vvBuf.slice(8 + 4 + 4 + 3, values.length - 8 - 4 - 4 - 3);
+            log.debug(vvBuf.readableBytes());
+            log.debug(MyUtils.ByteBuf2String(vvBuf));
+            ByteBuf valueBuf = vvBuf.slice(8 + 4 + 8 + 3, values.length - 8 - 4 - 8 - 3);
 
-            long ttl = ttlBuf.readLong();//ttl
-            long size = sizeBuf.readInt();//长度数据
+//            long ttl = ttlBuf.readLong();//ttl
+//            long size = sizeBuf.readInt();//长度数据
+//            long size = sizeBuf.readLong();//长度数据
 
-            //数据过期处理,对应的数据返回null；
-            if (ttl < now() && ttl != -1) {
-                try {
-                    db.delete(key0);
-                } catch (RocksDBException e) {
-                    e.printStackTrace();
-                    throw new RedisException(e.getMessage());
-                }
-                return null;
-            }
+//            //数据过期处理,对应的数据返回null；
+//            if (ttl < now() && ttl != -1) {
+//                try {
+//                    db.delete(key0);
+//                } catch (RocksDBException e) {
+//                    e.printStackTrace();
+//                    throw new RedisException(e.getMessage());
+//                }
+//                return null;
+//            }
 
             return valueBuf.readBytes(valueBuf.readableBytes()).array();
 
@@ -246,9 +247,9 @@ public class StringMeta {
     }
 
 
-    private long now() {
-        return System.currentTimeMillis();
-    }
+//    private long now() {
+//        return System.currentTimeMillis();
+//    }
 
 
     public String info() throws RedisException {
@@ -288,9 +289,21 @@ public class StringMeta {
      *
      * @return
      */
-    private  byte[] genKeyPartten() {
-        ByteBuf byteBuf = Unpooled.wrappedBuffer(NS, DataType.SPLIT, getKey0(), DataType.SPLIT);
-        return byteBuf.readBytes(byteBuf.readableBytes()).array();
+    private byte[] genKeyPartten() throws RedisException {
+        log.debug(MyUtils.ByteBuf2String(metaKey));
+
+        ByteBuf bb = metaKey.slice(NS.length + 1, metaKey.readableBytes() - NS.length - DataType.SPLIT.length * 2 - KEYTYPE.length);
+
+        log.debug(MyUtils.ByteBuf2String(bb));
+
+        try {
+            ByteBuf byteBuf = MyUtils.concat(NS, DataType.SPLIT, getKey0(), DataType.SPLIT);
+            return MyUtils.toByteArray(byteBuf);
+        } catch (RedisException e) {
+            e.printStackTrace();
+            Throwables.propagateIfPossible(e, RedisException.class);
+        }
+        return null;
     }
 
     /**
@@ -308,23 +321,27 @@ public class StringMeta {
     /**
      * 清除所有key
      *
+     * @param keyPartten0
+     * @throws RedisException
+     */
+    public void cleanBy(byte[] keyPartten0) throws RedisException {
+
+        cleanBy(db, keyPartten0);
+    }
+
+    /**
+     * 清理各种类型的数据keyPattern0（不含类型）
+     *
+     * @param db9
      * @param key0
      * @throws RedisException
      */
-    public  void cleanBy(byte[] key0) throws RedisException {
-
-        cleanBy(db,key0);
-    }
-
-    private void cleanBy(RocksDB db9,byte[] key0) throws RedisException {
-        ByteBuf byteBufBegin = Unpooled.wrappedBuffer(key0);
-        ByteBuf byteBufEnd = Unpooled.wrappedBuffer(key0, "z".getBytes());
-
-        byte[] begin = byteBufBegin.readBytes(byteBufBegin.readableBytes()).array();
-        byte[] end = byteBufEnd.readBytes(byteBufEnd.readableBytes()).array();
+    private void cleanBy(RocksDB db9, byte[] key0) throws RedisException {
+        ByteBuf byteBufBegin = MyUtils.concat(key0);
+        ByteBuf byteBufEnd = MyUtils.concat(key0, "z".getBytes());
 
         try {
-            db9.deleteRange(begin, end);
+            db9.deleteRange(MyUtils.toByteArray(byteBufBegin), MyUtils.toByteArray(byteBufEnd));
         } catch (RocksDBException e) {
             e.printStackTrace();
             throw new RedisException(e.getMessage());
@@ -333,6 +350,8 @@ public class StringMeta {
     }
 
     /**
+     * Redis SET 命令用于设置给定 key 的值。如果 key 已经存储其他值， SET 就覆写旧值，且无视类型。
+     * <p>
      * 如果字段是哈希表中的一个新建字段，并且值设置成功，返回 1 。 如果哈希表中域字段已经存在且旧值已被新值覆盖，返回 0 。
      *
      * @param key0
@@ -341,9 +360,7 @@ public class StringMeta {
      * @throws RedisException
      */
     public StatusReply set(byte[] key0, byte[] val1, byte[] seconds2) throws RedisException {
-
-        genMetaKey(key0);
-
+//        if (checkTypeAndTTL(key0, DataType.KEY_STRING)) return QUIT; //fixme 无视类型/无视ttl 覆盖
 
         long ttl = 0;
         if (seconds2 == null) {
@@ -353,16 +370,36 @@ public class StringMeta {
             ttl = RocksdbRedis.bytesToLong(seconds2);//fixme 重构
         }
 
-        genVal(val1, ttl);
+
 
         try {
 
-            db.put(getKey(), getVal());
+            //从缓存获取数据
+            metaVal = metaCache.get(Unpooled.wrappedBuffer(key0));
 
-        } catch (RocksDBException e) {
-            throw new RedisException(e.getMessage());
+//        log.debug(MyUtils.ByteBuf2String(metaVal));
+//        log.debug(new String(val1));
+
+            metaVal.setLong(0, ttl);//ttl
+            metaVal.setLong(8 + 4 + 2, val1.length);//size
+
+            //设定读写指针
+            metaVal.setIndex(0, 8 + 4 + 8 + 3);
+            metaVal.writeBytes(val1);
+
+            ByteBuf actual = metaCache.get(Unpooled.wrappedBuffer(key0));
+
+////            actual.resetWriterIndex();
+////            actual.resetReaderIndex();
+            log.debug(MyUtils.ByteBuf2String(metaVal));
+            log.debug(MyUtils.ByteBuf2String(actual));
+
+            Assert.assertEquals(metaVal, actual);
+
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+            Throwables.propagateIfPossible(e,RedisException.class);
         }
-
 
         //少进行一次读取操作；进行key 的孤独元素处理
         //todo 异步队列删除 Hash Set SortSet List 的 meta数据与element 数据
@@ -381,6 +418,10 @@ public class StringMeta {
 //            }
 //        });
 
+//        metaCache.invalidate(key0);//fixme 缓存不能同步问题处理
+//        metaCache.put(Unpooled.wrappedBuffer(key0),metaVal);//缓存不能同步问题处理
+
+        //清除类型数据，如果覆盖的话；  fixme
         singleThreadExecutor.execute(new MetaCleanCaller(db,
                 genKeyPartten(DataType.KEY_HASH_FIELD),
                 genKeyPartten(DataType.KEY_LIST_ELEMENT),
@@ -414,11 +455,11 @@ public class StringMeta {
         @Override
         public void run() {
             try {
-                cleanBy(db0,keyPartten1);
-                cleanBy(db0,keyPartten2);
-                cleanBy(db0,keyPartten3);
-                cleanBy(db0,keyPartten4);
-                cleanBy(db0,keyPartten5);
+                cleanBy(db0, keyPartten1);
+                cleanBy(db0, keyPartten2);
+                cleanBy(db0, keyPartten3);
+                cleanBy(db0, keyPartten4);
+                cleanBy(db0, keyPartten5);
             } catch (RedisException e) {
                 e.printStackTrace();
 //                throw new RedisException(e.getMessage());
@@ -436,38 +477,54 @@ public class StringMeta {
      * @throws RedisException
      */
     public BulkReply get(byte[] key0) throws RedisException {
-        genMetaKey(key0);
+        if (checkTypeAndTTL(key0, DataType.KEY_STRING)) return NIL_REPLY;
 
-        try {
+        byte[] values = getVal0();
 
-            if (metaKey == null) {
-                throw new RedisException(String.format("主键不能为空"));
-            }
-
-            byte[] values = db.get(getKey());
-
-            if (values == null) {
-                return NIL_REPLY;
-            }
-
-            this.metaVal = Unpooled.wrappedBuffer(values);
-
-            return new BulkReply(getVal0());
-
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
+        if (values == null) {
+            return NIL_REPLY;
         }
+
+        return new BulkReply(values);
+
+//        genMetaKey(key0);
+//
+//        try {
+//
+//            if (metaKey == null) {
+//                throw new RedisException(String.format("主键不能为空"));
+//            }
+//
+//            byte[] values = db.get(getKey());
+//
+//            if (values == null) {
+//                return NIL_REPLY;
+//            }
+//
+//            this.metaVal = Unpooled.wrappedBuffer(values);
+//
+//            return new BulkReply(getVal0());
+//
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
 
     }
 
 
     public BulkReply getRange(byte[] key0, byte[] start1, byte[] end2) throws RedisException {
-        genMetaKey(key0);
+//        if (checkTypeAndTTL(key0, DataType.KEY_STRING)) return NIL_REPLY;
+
+//        genMetaKey(key0);
 
         BulkReply bulkReply = get(key0);
 
-//        db.get(key0,out1); //fixme 从开始到结束，二次进行截取；
+        if (bulkReply.isEmpty()) {
+            return NIL_REPLY;
+        }
+
+        //从开始到结束，二次进行截取；
 
         byte[] bytes = bulkReply.data().array();
 
@@ -477,10 +534,9 @@ public class StringMeta {
         if (e < s) e = s;
         int length = e - s + 1;
 
-        ByteBuf valueBuf = Unpooled.wrappedBuffer(bytes); //零拷贝
-        ByteBuf slice = valueBuf.slice(s, length);
+        ByteBuf slice = Unpooled.wrappedBuffer(bytes).slice(s, length);
 
-        return new BulkReply(slice.readBytes(slice.readableBytes()).array());
+        return new BulkReply(MyUtils.toByteArray(slice));
 
     }
 
@@ -494,12 +550,12 @@ public class StringMeta {
      */
     public BulkReply getset(byte[] key0, byte[] value1) throws RedisException {
 
-        genMetaKey(key0);
+//        genMetaKey(key0);
 
         BulkReply put = get(key0);
         set(key0, value1, null);
-        if (put.data() == null || put.data().array() instanceof byte[]) {
-            return put == null ? NIL_REPLY : new BulkReply((byte[]) put.data().array());
+        if (put.isEmpty() || put.data().array() instanceof byte[]) {
+            return put == null ? NIL_REPLY : new BulkReply(put.data().array());
         } else {
             throw invalidValue();
         }
@@ -507,7 +563,9 @@ public class StringMeta {
 
 
     /**
-     * 获取所有(一个或多个)给定 key 的值。
+     * 获取所有(一个或多个)给定 key 的值;
+     * key不存在或者类型不为string都返回nil;
+     * 按key list的次序返回value;
      *
      * @param keys
      * @return
@@ -515,21 +573,66 @@ public class StringMeta {
      */
     public MultiBulkReply mget(byte[]... keys) throws RedisException {
 
-
-        List<byte[]> listFds = new ArrayList<byte[]>();
-
-        for (byte[] k : keys
-        ) {
-            listFds.add(genMetaKey(k).getKey());
-        }
-
-        List<BulkReply> list = __mget(listFds);
-
-        return new MultiBulkReply(list.toArray(new BulkReply[list.size()]));
-
+//        if (checkTypeAndTTL(key0, DataType.KEY_STRING)) return MultiBulkReply.EMPTY;
+        return mget(Arrays.asList(keys));
     }
 
 
+    public MultiBulkReply mget(List<byte[]> keys) throws RedisException {
+
+//        if (checkTypeAndTTL(key0, DataType.KEY_STRING)) return MultiBulkReply.EMPTY;
+
+        List<BulkReply> result = new ArrayList<BulkReply>();
+
+
+        //1.先从db获取最新数据；
+        List<byte[]> keysDb = keys;
+        keysDb.removeAll(metaCache.asMap().keySet());
+        BiMap<ByteBuf, ByteBuf> dbValues = metaMGet(keysDb);
+
+
+        //2.封装返回结果
+        try {
+            for (byte[] k : keys
+            ) {
+
+                //2.1先从DB获取数据
+                ByteBuf val = dbValues.get(Unpooled.wrappedBuffer(k));
+                if (val == null || val.readableBytes() == 0) {
+                    //2.2再从缓存获取数据 //如果不存在会产生空数据，确保不产生空数据
+                    val = metaCache.get(Unpooled.wrappedBuffer(k));
+                }
+
+                if (val != null) {
+                    byte[] val0 = getVal0(val);
+                    if (val0==null){
+                        result.add(NIL_REPLY);
+                    }else
+                    result.add(new BulkReply(val0));
+                    //2.3都不存在返回nil
+                } else result.add(NIL_REPLY);
+
+
+            }
+
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+            Throwables.propagateIfPossible(e, RedisException.class);
+
+        }
+
+        return new MultiBulkReply(result.toArray(new BulkReply[result.size()]));
+
+    }
+
+    /**
+     * guava 加载与清除都支持批量处理？？？
+     *
+     * @param listFds
+     * @return
+     * @throws RedisException
+     */
+    @Deprecated
     protected List<BulkReply> __mget(List<byte[]> listFds) throws RedisException {
         List<BulkReply> list = new ArrayList<BulkReply>();
 
@@ -553,14 +656,10 @@ public class StringMeta {
 
 
     public StatusReply mset(byte[]... field_or_value1) throws RedisException {
+
+
         if (field_or_value1.length % 2 != 0) {
             throw new RedisException("wrong number of arguments for HMSET");
-        }
-
-        //处理 field key
-        for (int i = 0; i < field_or_value1.length; i += 2) {
-            field_or_value1[i] = genMetaKey(field_or_value1[i]).getKey();
-//            log.debug(new String(field_or_value1[i]));
         }
 
         __mput(field_or_value1);
@@ -568,29 +667,47 @@ public class StringMeta {
         return OK;
     }
 
-    protected void __mput(byte[][] field_or_value1) {
+    /**
+     * 批量数据存储处理
+     *
+     * @param field_or_value1
+     */
+    protected void __mput(byte[][] field_or_value1) throws RedisException {
+        log.debug("__mput......begin");
+
         final WriteOptions writeOpt = new WriteOptions();
         final WriteBatch batch = new WriteBatch();
-        for (int i = 0; i < field_or_value1.length; i += 2) {
 
-            byte[] val = genVal(field_or_value1[i + 1], -1).getVal();
+        try {
 
-            try {
+            for (int i = 0; i < field_or_value1.length; i += 2) {
+                //封装metakey
+//                field_or_value1[i] = getMetaKey2Byte(field_or_value1[i]);
+                byte[] key0 = getMetaKey2Byte(field_or_value1[i]);
 
-                batch.put(field_or_value1[i], val);
-                //fixme  通过 keys 获取数量
-            } catch (RocksDBException e) {
-                e.printStackTrace();
+//            }
+
+                //封装metaVal
+//            for (int i = 0; i < field_or_value1.length; i += 2) {
+//            byte[] val = genVal(field_or_value1[i + 1], -1).getVal();
+                byte[] val0 = getMetaVal(field_or_value1[i + 1], -1);
+//                batch.put(field_or_value1[i], val);
+                batch.put(key0, val0);
+
+                metaCache.invalidate(key0);
+
             }
 
-        }
-        try {
 
             db.write(writeOpt, batch);
 
         } catch (RocksDBException e) {
-            throw new RuntimeException(e.getMessage());
+//            throw new RuntimeException(e.getMessage());
+            Throwables.propagateIfPossible(e, RedisException.class);
         }
+
+        log.debug("__mput......end");
+
     }
 
 
@@ -611,7 +728,7 @@ public class StringMeta {
      * @throws RedisException
      */
     public IntegerReply msetnx(byte[]... key_or_value0) throws RedisException {
-
+        log.debug("msetnx......begin");
 
         int length = key_or_value0.length;
         if (length % 2 != 0) {
@@ -619,27 +736,30 @@ public class StringMeta {
         }
 
 
-        List<byte[]> listFds = new ArrayList<byte[]>();
+        List<byte[]> keys = new ArrayList<byte[]>();
         //处理 string 的主键
         for (int i = 0; i < length; i += 2) {
-            //_put(key_or_value0[i], key_or_value0[i + 1]);
-            key_or_value0[i] = genMetaKey(key_or_value0[i]).getKey();
-            listFds.add(key_or_value0[i]);
+//            key_or_value0[i] = getMetaKey2Byte(key_or_value0[i]);
+//            keys.add(key_or_value0[i]);
+            keys.add(key_or_value0[i]);
+
         }
 
         //有一个不存在,返回错误
-//        List<BulkReply> bulkReplies = mget(listFds.toArray());
-        List<BulkReply> bulkReplies = __mget(listFds);
+//        List<BulkReply> bulkReplies = __mget(keys);
 
-        for (BulkReply br : bulkReplies
-        ) {
-            if (br.data() != null) {
+        MultiBulkReply bulkReplies = mget(keys);
+
+        for (String str : bulkReplies.asStringList(Charset.defaultCharset())) {
+
+            if (str != null) {
                 return integer(0);
             }
-
         }
 
         __mput(key_or_value0);
+
+        log.debug("msetnx......end");
 
         return integer(1);
     }
@@ -671,16 +791,30 @@ public class StringMeta {
             return new IntegerReply(incr);
         } else {
 
-            String fld = field.asAsciiString();
-            long value = Long.parseLong(fld);
+            String val = new String(field.dataByte());
 
+
+            try {
+                long value = Long.parseLong(val);
+
+//                String fld = field.asAsciiString();//fixme
+//                long value = Long.parseLong(val);
 //            long value =             field.data().readLong();
 
-            value = value + incr;
+                value = value + incr;
 
-            set(key0, (value + "").getBytes(), null);
+                set(key0, (value + "").getBytes(), null);
 
-            return new IntegerReply(value);
+                metaCache.invalidate(key0);
+
+                return new IntegerReply(value);
+
+            } catch (NumberFormatException e) {
+                throw notInteger();
+//                System.out.println("异常：\"" + str + "\"不是数字/整数...");
+            }
+
+//
         }
 
     }
@@ -701,7 +835,7 @@ public class StringMeta {
 
     public IntegerReply append(byte[] key0, byte[] value1) throws RedisException {
         BulkReply src = get(key0);
-        ByteBuf targetBuf = Unpooled.wrappedBuffer(src.data().array(), value1);
+        ByteBuf targetBuf = MyUtils.concat(src.data().array(), value1);
 
         byte[] obj = targetBuf.readBytes(targetBuf.readableBytes()).array();
         set(key0, obj, null);
@@ -723,6 +857,15 @@ public class StringMeta {
 //    }
 
 
+    /**
+     * 将值 value 关联到 key ，并将 key 的过期时间设为 seconds (以秒为单位)。
+     *
+     * @param key0
+     * @param seconds1
+     * @param value2
+     * @return
+     * @throws RedisException
+     */
     public StatusReply setex(byte[] key0, byte[] seconds1, byte[] value2) throws RedisException {
 
         return set(key0, value2, seconds1);
@@ -760,7 +903,10 @@ public class StringMeta {
 
         int offset = _toposint(offset1) < data.length ? _toposint(offset1) : data.length;
 
-        buf.writeBytes(value2, offset, value2.length);
+
+//        buf.writeBytes(value2, offset, value2.length);
+        buf.setIndex(0, offset);
+        buf.writeBytes(value2);
 
         byte[] array = buf.readBytes(buf.readableBytes()).array();
 
@@ -771,24 +917,23 @@ public class StringMeta {
     }
 
     /**
-     *
      * SETBIT key offset value
-     *
+     * <p>
      * 对 key 所储存的字符串值，设置或清除指定偏移量上的位(bit)。
-     *
+     * <p>
      * 位的设置或清除取决于 value 参数，可以是 0 也可以是 1 。
-     *
+     * <p>
      * 当 key 不存在时，自动生成一个新的字符串值。
-     *
+     * <p>
      * 字符串会进行伸展(grown)以确保它可以将 value 保存在指定的偏移量上。当字符串值进行伸展时，空白位置以 0 填充。
-     *
+     * <p>
      * offset 参数必须大于或等于 0 ，小于 2^32 (bit 映射被限制在 512 MB 之内)。
-     *
+     * <p>
      * 指定偏移量原来储存的位。
      * redis> SETBIT bit 10086 1
      * redis> GETBIT bit 10086
      * redis> GETBIT bit 100   # bit 默认被初始化为 0
-     *
+     * <p>
      * 返回值：
      * 字符串值指定偏移量上原来储存的位(bit)。
      *
@@ -799,6 +944,9 @@ public class StringMeta {
      * @throws RedisException
      */
     public IntegerReply setbit(byte[] key0, byte[] offset1, byte[] value2) throws RedisException {
+        //判断类型是否String
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_STRING)) return integer(0);
+
 
         //todo 可以支持一批数据，以提升效率
         int bit = (int) bytesToNum(value2);
@@ -806,17 +954,17 @@ public class StringMeta {
 
 //        long offset = bytesToNum(offset1);
 //        long offset= Longs.fromByteArray(offset1);//fixme 是否与Redis协议一致
-        long offset=Long.parseLong(new String(offset1));
+        long offset = Long.parseLong(new String(offset1));
 
 //        long div = offset / 8;
 //        if (div + 1 > MAX_VALUE) throw notInteger();
 
         Roaring64NavigableMap r64nm = null;
         try {
-            r64nm = bitCache.get(Unpooled.wrappedBuffer(key0));
+            r64nm = bitCache.get(MyUtils.concat(key0, "bit".getBytes()));//todo key0+"bits" 产生的数据需要del时候考虑删除。
         } catch (ExecutionException e) {
             e.printStackTrace();
-            Throwables.propagateIfPossible(e,RedisException.class);
+            Throwables.propagateIfPossible(e, RedisException.class);
         }
 
         //返回值：
@@ -826,8 +974,7 @@ public class StringMeta {
         //1设置，0清除
         if (bit == 1) {
             r64nm.addLong(offset);
-        }else
-        {
+        } else {
             r64nm.removeLong(offset);
         }
 
@@ -840,7 +987,7 @@ public class StringMeta {
 
 //        bitCache.put(Unpooled.wrappedBuffer(key0),r64nm);
 
-        return result?integer(1):integer(0);
+        return result ? integer(1) : integer(0);
 
 //        //        Object o = _get(key0);
 ////        if (o instanceof byte[] || o == null) {
@@ -879,20 +1026,20 @@ public class StringMeta {
      * GETBIT key offset
      * 对 key 所储存的字符串值，获取指定偏移量上的位(bit)。
      * 当 offset 比字符串值的长度大，或者 key 不存在时，返回 0 。
-     *
+     * <p>
      * 字符串值指定偏移量上的位(bit)。
      * # 对不存在的 key 或者不存在的 offset 进行 GETBIT， 返回 0
-     *
-     *
+     * <p>
+     * <p>
      * redis> EXISTS bit
      * redis> GETBIT bit 10086*
-     *
+     * <p>
      * # 对已存在的 offset 进行 GETBIT
-     *
+     * <p>
      * redis> SETBIT bit 10086 1
      * redis> GETBIT bit 10086
-     *
-     *
+     * <p>
+     * <p>
      * 当 offset 比字符串值的长度大，或者 key 不存在时，返回 0 。
      * 返回值：
      * 字符串值指定偏移量上的位(bit)。
@@ -903,15 +1050,16 @@ public class StringMeta {
      * @throws RedisException
      */
     public IntegerReply getbit(byte[] key0, byte[] offset1) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_STRING)) return integer(0);
 
         long offset = bytesToNum(offset1);
 
         Roaring64NavigableMap r64nm = null;
         try {
-            r64nm = bitCache.get(Unpooled.wrappedBuffer(key0));
+            r64nm = bitCache.get(MyUtils.concat(key0, "bit".getBytes()));
         } catch (ExecutionException e) {
             e.printStackTrace();
-            Throwables.propagateIfPossible(e,RedisException.class);
+            Throwables.propagateIfPossible(e, RedisException.class);
         }
         boolean result = r64nm.contains(offset);
 
@@ -925,23 +1073,21 @@ public class StringMeta {
 //        } else {
 //            throw invalidValue();
 //        }
-        return result?integer(1):integer(0);
+        return result ? integer(1) : integer(0);
     }
 
     /**
-     *
      * 如果你的 bitmap 数据非常大，那么可以考虑使用以下两种方法：
-     *
+     * <p>
      * 将一个大的 bitmap 分散到不同的 key 中，作为小的 bitmap 来处理。使用 Lua 脚本可以很方便地完成这一工作。
      * 使用 BITCOUNT 的 start 和 end 参数，每次只对所需的部分位进行计算，将位的累积工作(accumulating)放到客户端进行，并且对结果进行缓存 (caching)。
-     *
-     *
+     * <p>
+     * <p>
      * BITCOUNT key [start] [end]
      * 计算给定字符串中，被设置为 1 的比特位的数量。
      * 一般情况下，给定的整个字符串都会被进行计数，通过指定额外的 start 或 end 参数，可以让计数只在特定的位上进行。
      * start 和 end 参数的设置和 GETRANGE 命令类似，都可以使用负数值： 比如 -1 表示最后一个字节， -2 表示倒数第二个字节，以此类推。
      * 不存在的 key 被当成是空字符串来处理，因此对一个不存在的 key 进行 BITCOUNT 操作，结果为 0 。
-     *
      *
      * @param key0
      * @param start1
@@ -950,19 +1096,20 @@ public class StringMeta {
      * @throws RedisException
      */
     public IntegerReply bitcount(byte[] key0, byte[] start1, byte[] end2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_STRING)) return integer(0);
 
-        if(start1!=null || end2!=null){
+        if (start1 != null || end2 != null) {
             long s1 = bytesToNum(start1);
             long e1 = bytesToNum(end2);
         }
 
         Roaring64NavigableMap r64nm = null;
         try {
-            r64nm = bitCache.get(Unpooled.wrappedBuffer(key0));
+            r64nm = bitCache.get(MyUtils.concat(key0, "bit".getBytes()));
 //            r64nm.rankLong(1);
         } catch (ExecutionException e) {
             e.printStackTrace();
-            Throwables.propagateIfPossible(e,RedisException.class);
+            Throwables.propagateIfPossible(e, RedisException.class);
         }
 //        boolean result = r64nm.contains(offset);
         long longCardinality = r64nm.getLongCardinality();
@@ -998,25 +1145,24 @@ public class StringMeta {
     }
 
     /**
-     *
      * BITOP operation destkey key [key ...]
-     *
+     * <p>
      * 对一个或多个保存二进制位的字符串 key 进行位元操作，并将结果保存到 destkey 上。
-     *
+     * <p>
      * operation 可以是 AND 、 OR 、 NOT 、 XOR 这四种操作中的任意一种：
-     *
+     * <p>
      * BITOP AND destkey key [key ...] ，对一个或多个 key 求逻辑并，并将结果保存到 destkey 。
      * BITOP OR destkey key [key ...] ，对一个或多个 key 求逻辑或，并将结果保存到 destkey 。
      * BITOP XOR destkey key [key ...] ，对一个或多个 key 求逻辑异或，并将结果保存到 destkey 。
      * BITOP NOT destkey key ，对给定 key 求逻辑非，并将结果保存到 destkey 。
      * 除了 NOT 操作之外，其他操作都可以接受一个或多个 key 作为输入。
-     *
+     * <p>
      * 处理不同长度的字符串
-     *
+     * <p>
      * 当 BITOP 处理不同长度的字符串时，较短的那个字符串所缺少的部分会被看作 0 。
-     *
+     * <p>
      * 空的 key 也被看作是包含 0 的字符串序列。
-     *
+     * <p>
      * >>>保存到 destkey 的字符串的长度，和输入 key 中最长的字符串长度相等。
      *
      * @param operation0
@@ -1025,15 +1171,16 @@ public class StringMeta {
      * @return
      * @throws RedisException
      */
- public IntegerReply bitop(byte[] operation0, byte[] destkey1, byte[]... key2) throws RedisException {
+    public IntegerReply bitop(byte[] operation0, byte[] destkey1, byte[]... key2) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_STRING)) return integer(0);
 
-         Roaring64NavigableMap r64nm = null;
-         try {
-             r64nm = bitCache.get(Unpooled.wrappedBuffer(destkey1));
-         } catch (ExecutionException e) {
-             e.printStackTrace();
-             Throwables.propagateIfPossible(e,RedisException.class);
-         }
+        Roaring64NavigableMap r64nm = null;
+        try {
+            r64nm = bitCache.get(MyUtils.concat(destkey1, "bit".getBytes()));
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+            Throwables.propagateIfPossible(e, RedisException.class);
+        }
 
         BitOp bitOp = BitOp.valueOf(new String(operation0).toUpperCase());
 
@@ -1052,10 +1199,10 @@ public class StringMeta {
 
             Roaring64NavigableMap src = null;
             try {
-                src = bitCache.get(Unpooled.wrappedBuffer(aKey2));
+                src = bitCache.get(MyUtils.concat(aKey2, "bit".getBytes()));
             } catch (ExecutionException e) {
                 e.printStackTrace();
-                Throwables.propagateIfPossible(e,RedisException.class);
+                Throwables.propagateIfPossible(e, RedisException.class);
             }
 
             switch (bitOp) {
@@ -1112,16 +1259,17 @@ public class StringMeta {
     enum BitOp {AND, OR, XOR, NOT}
 
 
-    public static byte[] getMetaKey(byte[] key0) {
-        ByteBuf metaKey = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
-        return MyUtils.toByteArray(metaKey);
-    }
+//    public static byte[] getMetaKey(byte[] key0) {
+//        ByteBuf metaKey = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+//        return MyUtils.toByteArray(metaKey);
+//    }
 
-    public static ByteBuf getMetaKey1(byte[] key0) {
-        ByteBuf metaKey = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
-        return metaKey;
-    }
+//    public static ByteBuf getMetaKey1(byte[] key0) {
+//        ByteBuf metaKey = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+//        return metaKey;
+//    }
 
+    @Deprecated
     public static byte[] getMetaVal(byte[] value, long expiration) {
 
         ByteBuf buf = Unpooled.buffer(12);
@@ -1131,7 +1279,7 @@ public class StringMeta {
         buf.writeInt(DataType.KEY_STRING); //value type
         buf.writeBytes(DataType.SPLIT);
 
-        buf.writeInt(value.length); //value size
+        buf.writeLong(value.length); //value size
         buf.writeBytes(DataType.SPLIT);
 
         //业务数据
@@ -1141,11 +1289,6 @@ public class StringMeta {
 
     }
 
-    public static byte[] getMetaVal0(ByteBuf metaVal) throws RedisException {
-        metaVal.resetReaderIndex();
-        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
-        return MyUtils.toByteArray(valueBuf);
-    }
 
     static LoadingCache<ByteBuf, Roaring64NavigableMap> bitCache
             // CacheBuilder的构造函数是私有的，只能通过其静态方法newBuilder()来获得CacheBuilder的实例
@@ -1175,8 +1318,10 @@ public class StringMeta {
                         {
                             Roaring64NavigableMap r64nm = notification.getValue();
 
+                            ByteBuf metaKey = getMetaKey(MyUtils.toByteArray(notification.getKey()));
+
 //                            db.put(notification.getKey().array(), Snappy.compress(DbUtils.exportBitmap(r64nm).toByteArray()));
-                            db.put(getMetaKey(notification.getKey().array()), getMetaVal(Snappy.compress(DbUtils.exportBitmap(r64nm).toByteArray()), -1));
+                            db.put(MyUtils.toByteArray(metaKey), getMetaVal(Snappy.compress(DbUtils.exportBitmap(r64nm).toByteArray()), -1));
 
                             log.debug(String.format("获取Roaring64NavigableMap(数量=%s) 列表，持久化到 RocksDb。\n key:%s 初始验证：%s  修改验证：%s",
                                     r64nm.getLongCardinality(),
@@ -1198,21 +1343,24 @@ public class StringMeta {
             .build(new CacheLoader<ByteBuf, Roaring64NavigableMap>() {
                 @Override
                 public Roaring64NavigableMap load(ByteBuf key) throws Exception {
-                    key.resetReaderIndex();
 
-                    byte[] value = db.get(getMetaKey(key.array()));
+//                    key.writeBytes("bits");
 
-                    Roaring64NavigableMap r64nm=null;
-                    if (null==value){
+                    byte[] value = db.get(MyUtils.toByteArray(getMetaKey(MyUtils.toByteArray(key))));
+
+                    log.debug(value);
+
+                    Roaring64NavigableMap r64nm = null;
+                    if (null == value) {
                         r64nm = new Roaring64NavigableMap();
-                    }else{
+                    } else {
                         r64nm = DbUtils.importBitmap(Snappy.uncompress(value));
                     }
 
 //                    byte[] value = db.get(getMetaKey(key0.array()));
 
 
-                    log.debug(String.format("加载HyperLogLog从RocksDb: key %s  数量%s  初始验证：%s 修改验证：%s\"",
+                    log.debug(String.format("加载Roaring64NavigableMap从RocksDb: key %s  数量%s  初始验证：%s 修改验证：%s\"",
                             MyUtils.ByteBuf2String(key),
                             r64nm.getLongCardinality(),
                             r64nm.contains(13691588588l),
@@ -1246,15 +1394,13 @@ public class StringMeta {
     /**
      * BITPOS key bit [start] [end]
      * 返回字符串里面第一个被设置为1或者0的bit位。
-     *
-     *  assertEquals(rr.select(3),1000);//0-3
-     *
+     * <p>
+     * assertEquals(rr.select(3),1000);//0-3
      */
 
     public static void main(String[] args) throws Exception {
 
     }
-
 
 
 }

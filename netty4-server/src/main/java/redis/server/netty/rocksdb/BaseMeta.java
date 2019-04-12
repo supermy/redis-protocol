@@ -2,20 +2,27 @@ package redis.server.netty.rocksdb;
 
 import com.google.common.base.Throwables;
 import com.google.common.cache.*;
+import com.google.common.collect.BiMap;
+import com.google.common.collect.HashBiMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.log4j.Logger;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.supermy.util.MyUtils;
+import redis.netty4.BulkReply;
 import redis.server.netty.RedisException;
 import redis.server.netty.utis.DataType;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 import static redis.util.Encoding.bytesToNum;
 
@@ -62,14 +69,47 @@ public abstract class BaseMeta {
      * @throws RedisException
      */
     public byte[] getKey0() throws RedisException {
+//        log.debug(metaKey);
         metaKey.resetReaderIndex();
         ByteBuf bb = metaKey.slice(NS.length + 1, metaKey.readableBytes() - NS.length - DataType.SPLIT.length * 2 - KEYTYPE.length);
-        return bb.readBytes(bb.readableBytes()).array();
+        return MyUtils.toByteArray(bb);
+    }
+
+    /**
+     * 用于批量获取数据后获取业务key
+     * @return
+     * @throws RedisException
+     */
+    public ByteBuf getKey0(ByteBuf metaKey0) throws RedisException {
+//        log.debug(metaKey);
+        metaKey0.resetReaderIndex();
+        ByteBuf bb = metaKey0.slice(NS.length + 1, metaKey0.readableBytes() - NS.length - DataType.SPLIT.length * 2 - KEYTYPE.length);
+//        return MyUtils.toByteArray(bb);
+        return bb;
     }
 
 
+    /**
+     * 用于批量处理获取数据后的业务value
+     * @param metaVal0
+     * @return
+     * @throws RedisException
+     */
+    public byte[] getVal0(ByteBuf metaVal0) throws RedisException {
+//        log.debug(MyUtils.ByteBuf2String(metaVal0));
+        ByteBuf valueBuf = metaVal0.slice(8 + 4 + 8 + 3, metaVal0.readableBytes() - 8 - 4 - 8 - 3);
 
+        if(valueBuf.readableBytes()==0){
+            return null;
+        }else
+        return MyUtils.toByteArray(valueBuf);
+    }
 
+    public static ByteBuf getMetaVal0(ByteBuf metaVal) throws RedisException {
+        metaVal.resetReaderIndex();
+        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
+        return valueBuf;
+    }
 
     /**
      * 批量删除主键(0-9.A-Z,a-z)；
@@ -211,15 +251,16 @@ public abstract class BaseMeta {
      * @param dataType1
      */
     public boolean checkTypeAndTTL(byte[] key0, int dataType1) throws RedisException {
-        log.debug("数据类型及数据过期(TTL)检测");
+        log.trace("数据类型及数据过期(TTL)检测");
         try {
             metaVal = metaCache.get(Unpooled.wrappedBuffer(key0));
 
-            log.debug(String.format("数据类型及数据过期(TTL)检测，key=%s value=%s count=%s dataType=%s type=%s ",
+            log.trace(String.format("数据类型及数据过期(TTL)检测，key=%s value=%s count=%s dataType=%s type=%s ",
                     new String(key0),toString(metaVal),getCount(),
                     dataType1,
                     getType()
             ));
+
             if (getType() != -1 && getType() != dataType1) {
                 //抛出异常 类型不匹配
                 throw invalidValue();
@@ -314,6 +355,11 @@ public abstract class BaseMeta {
     }
 
 
+    public static byte[] getMetaKey2Byte(byte[] key0) {
+        return MyUtils.toByteArray(getMetaKey(key0));
+    }
+
+
     /**
      * 构造落盘value: ttl|type|count|value
      * @param value
@@ -322,7 +368,7 @@ public abstract class BaseMeta {
      */
     public static ByteBuf getMetaVal(long count, long expiration) {
 
-        ByteBuf buf = Unpooled.buffer(12);
+        ByteBuf buf = Unpooled.buffer(16);
         buf.writeLong(expiration); //ttl 无限期 -1
         buf.writeBytes(DataType.SPLIT);
 
@@ -332,7 +378,7 @@ public abstract class BaseMeta {
         buf.writeLong(count); //value count
 
 //        buf.writeLong(value); //value size
-//        buf.writeBytes(DataType.SPLIT);
+        buf.writeBytes(DataType.SPLIT); //for String Type support
 
         //业务数据
 //        buf.writeBytes(value);
@@ -351,7 +397,7 @@ public abstract class BaseMeta {
      */
     public static ByteBuf getMetaVal(long count, long sseq, long eseq, long cseq) {
 
-        ByteBuf valBuf = Unpooled.buffer(12);
+        ByteBuf valBuf = Unpooled.buffer(16);
 
         valBuf.writeLong(-1); //ttl 无限期 -1
         valBuf.writeBytes(DataType.SPLIT);
@@ -379,11 +425,114 @@ public abstract class BaseMeta {
     }
 
 
-    public static ByteBuf getMetaVal0(ByteBuf metaVal) throws RedisException {
-        metaVal.resetReaderIndex();
-        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
-        return valueBuf;
+
+
+
+    /**
+     * 业务key列表获取封装
+     * 返回业务key/元数据
+     * @param keys0
+     * @return
+     * @throws RedisException
+     */
+    public  BiMap<ByteBuf, ByteBuf> metaMGet(List<byte[]> keys0) throws RedisException {
+        log.debug("metaMGet......begin");
+        //1。封装元数据key
+        List<byte[]> keys4Db = new ArrayList<byte[]>();
+        for (byte[] k : keys0
+        ) {
+            keys4Db.add(MyUtils.toByteArray(getMetaKey(k)));
+        }
+
+        //2.批量获取数据
+        Map<byte[], byte[]> fvals = null;
+        try {
+            fvals = db.multiGet(keys4Db);
+        } catch (RocksDBException e) {
+            e.printStackTrace();
+            Throwables.propagateIfPossible(e,RedisException.class);
+        }
+
+        //3.解封元key,封装业务eky/元数据
+        BiMap<ByteBuf, ByteBuf> values = HashBiMap.create();//业务key,元数据metaValue
+        for (byte[] k:fvals.keySet()
+        ) {
+            log.debug(MyUtils.ByteBuf2String(getKey0(MyUtils.concat(k))));
+
+            byte[] val = getVal0(MyUtils.concat(fvals.get(k)));
+            if (val!=null){
+                log.debug(new String(fvals.get(k)));
+                values.put(getKey0(MyUtils.concat(k)),MyUtils.concat(fvals.get(k)));
+            }
+
+        }
+
+        log.debug("metaMGet......end");
+
+        return values;
     }
+
+
+    /**
+     *
+     * 业务key获取封装
+     * 返回业务元数据
+     *
+     * @param keys0
+     * @return
+     * @throws RedisException
+     */
+    public  byte[] metaGet(byte[] keys0) throws RedisException {
+        //1。封装元数据key
+        byte[] metaKey0 = MyUtils.toByteArray(getMetaKey(keys0));
+
+        //2.获取数据
+        try {
+            byte[] value = db.get(metaKey0);
+
+//            //3.解封元key,封装业务eky/元数据
+//            if (value == null) {
+//                return null;
+//            }
+//            return getVal0(Unpooled.wrappedBuffer(value));
+            return value;
+        } catch (RocksDBException e) {
+            e.printStackTrace();
+            Throwables.propagateIfPossible(e,RedisException.class);
+        }
+        return null;
+    }
+
+
+    /**
+     * 通过业务key,返回业务数据
+     * @param keys0
+     * @return
+     * @throws RedisException
+     */
+    public  byte[] Get(byte[] keys0) throws RedisException {
+        byte[] value = metaGet(keys0);
+        if (value == null) {
+            return null;
+        }
+        return getVal0(Unpooled.wrappedBuffer(value));
+    }
+
+
+    /**
+     * 通过业务key;返回协议业务数据
+     * @param keys0
+     * @return
+     * @throws RedisException
+     */
+    public BulkReply GetRedisProtocol(byte[] keys0) throws RedisException {
+        byte[] value = Get(keys0);
+        if (value == null) {
+            return NIL_REPLY;
+        }
+        return new BulkReply(value);
+    }
+
 
 
     /**
@@ -452,7 +601,6 @@ public abstract class BaseMeta {
                     byte[] value = db.get(MyUtils.toByteArray(metaKey));
 
 //                    log.debug(db.get("redis|HashUpdate|1".getBytes()));
-//                    log.debug(value);
 
                     if (null==value){//生成新的元数据，数量为0，落盘持久化
 
@@ -470,21 +618,27 @@ public abstract class BaseMeta {
                                 MyUtils.ByteBuf2String(key0),
                                 MyUtils.ByteBuf2String(metaVal),
                                 metaVal.getLong(8+4+2)
-
                                 )
                         );
+                        metaVal.resetReaderIndex();
                         return metaVal;
                     }else {
 
+                        log.debug(new String(value));
+
+//                        log.debug(MyUtils.concat(value).getLong(0));
+//                        log.debug(MyUtils.concat(value).getInt(8+1));
+//                        log.debug(MyUtils.concat(value).getLong(8+4+2));
+
                         log.debug(String.format("获取Meta元数据RocksDb。 key:%s value:%s count:%s metakey=%s",
                                 MyUtils.ByteBuf2String(key0),
-                                MyUtils.ByteBuf2String(Unpooled.wrappedBuffer(value)),
-                                Unpooled.wrappedBuffer(value).getLong(8+4+2),
+                                MyUtils.ByteBuf2String(MyUtils.concat(value)),
+                                MyUtils.concat(value).getLong(8+4+2),
                                 MyUtils.ByteBuf2String(metaKey)
                                 ));
 //                        return Unpooled.wrappedBuffer(getMetaVal0(Unpooled.wrappedBuffer(value)));
-                        ByteBuf metaVal =Unpooled.wrappedBuffer(value);
-                        return metaVal;
+//                        ByteBuf metaVal =MyUtils.concat(value);
+                        return MyUtils.concat(value);
 
                     }
                 }

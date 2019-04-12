@@ -46,6 +46,17 @@ public class ByteBufTest {
 
 
     @Test
+    public void subTest() throws InterruptedException {
+
+        ByteBuf dBuf = Unpooled.wrappedBuffer("abcedfgh".getBytes());
+
+        log.debug(dBuf.slice(0,1).array());
+        log.debug(dBuf.slice(8,1).array());
+        log.debug(dBuf.slice(10,1).array());
+
+    }
+
+        @Test
     public void byteBufTest() throws InterruptedException {
 
         ByteBuf dBuf = Unpooled.directBuffer(16);
