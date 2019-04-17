@@ -30,7 +30,7 @@ import static redis.util.Encoding.bytesToNum;
  * redis 元数据类型的基类
  *
  */
-public abstract class BaseMeta {
+public abstract class BaseMeta extends DataMeta {
     private static Logger log = Logger.getLogger(BaseMeta.class);
 
     /**
@@ -95,8 +95,10 @@ public abstract class BaseMeta {
      * @return
      * @throws RedisException
      */
-    public byte[] getVal0(ByteBuf metaVal0) throws RedisException {
+    public static byte[] getVal0(ByteBuf metaVal0) throws RedisException {
 //        log.debug(MyUtils.ByteBuf2String(metaVal0));
+
+        metaVal0.resetReaderIndex();
         ByteBuf valueBuf = metaVal0.slice(8 + 4 + 8 + 3, metaVal0.readableBytes() - 8 - 4 - 8 - 3);
 
         if(valueBuf.readableBytes()==0){
@@ -425,8 +427,51 @@ public abstract class BaseMeta {
     }
 
 
+    /**
+     * 独立的数据key,避免metacache占用过多的内存
+     * @param key0
+     * @param datatype
+     * @return
+     */
+    public static ByteBuf getDataKey(byte[] key0,byte[] datatype) {
+        ByteBuf dataKey = MyUtils.concat(NS, DataType.SPLIT, key0, DataType.SPLIT,KEYTYPE,DataType.SPLIT, datatype);
+        return dataKey;
+    }
 
 
+    public static byte[] getDataKey2Byte(byte[] key0,byte[] datatype) {
+        return MyUtils.toByteArray(getDataKey(key0,datatype));
+    }
+
+    /**
+     * 数据节点构造通用方法：HyperLogLog
+     *
+     * @param value
+     * @param expiration
+     * @return
+     */
+    public static ByteBuf genDataVal(byte[] value, long expiration) {
+
+        ByteBuf buf = Unpooled.buffer(16);
+        buf.writeLong(expiration); //ttl 无限期 -1
+        buf.writeBytes(DataType.SPLIT);
+
+        buf.writeInt(VAlTYPE); //value type
+        buf.writeBytes(DataType.SPLIT);
+
+        buf.writeLong(value.length); //value size
+        buf.writeBytes(DataType.SPLIT);
+
+        buf.writeBytes(value);
+
+        return buf;
+    }
+
+    public static byte[] genDataByteVal(byte[] value, long expiration) {
+
+       return  MyUtils.toByteArray(genDataVal(value, expiration));
+
+    }
 
     /**
      * 业务key列表获取封装

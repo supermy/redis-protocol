@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
+import static redis.netty4.StatusReply.QUIT;
 import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 
 
@@ -64,18 +65,18 @@ import static redis.server.netty.rocksdb.RedisBase.invalidValue;
  * method: JPCreate key element [element ...] ；JPGet key path;JPSet key path val;JPDel key path
  * <p>
  */
-public class JsonPathMeta {
+public class JsonPathMeta extends BaseMeta{
 
     private static Logger log = Logger.getLogger(JsonPathMeta.class);
 
 
-    private static RocksDB db;
+//    private static RocksDB db;
 
-    private byte[] NS;
-    private static byte[] TYPE = DataType.KEY_META;
+//    private byte[] NS;
+//    private static byte[] TYPE = DataType.KEY_META;
 
-    private ByteBuf metaKey;
-    private ByteBuf metaVal;
+//    private ByteBuf metaKey;
+//    private ByteBuf metaVal;
 
 
     private JsonPathMeta() {
@@ -96,6 +97,7 @@ public class JsonPathMeta {
     public static JsonPathMeta getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
+        instance.VAlTYPE = DataType.KEY_JSONPATH;
         return instance;
     }
 
@@ -108,61 +110,62 @@ public class JsonPathMeta {
      * @return
      * @throws RedisException
      */
+    @Deprecated
     public JsonPathMeta genMetaKey(byte[] key0) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("主键不能为空"));
         }
-        metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
 
         return this;
     }
 
+//    @Deprecated
+//    public static byte[] getMetaKey(byte[] key0) {
+//        ByteBuf metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
+//        return MyUtils.toByteArray(metaKey);
+//    }
 
-    public static byte[] getMetaKey(byte[] key0) {
-        ByteBuf metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
-        return MyUtils.toByteArray(metaKey);
-    }
+//    private byte[] getKey0() {
+//        metaKey.resetReaderIndex();
+//        ByteBuf bb = metaKey.slice(NS.length + DataType.SPLIT.length, metaKey.readableBytes() - 8);
+//        return bb.readBytes(bb.readableBytes()).array();
+//    }
+//
+//    private String getKey0Str() {
+//        return new String(getKey0());
+//    }
+//
+//    private byte[] getKey() {
+//        metaKey.resetReaderIndex();
+//        return metaKey.readBytes(metaKey.readableBytes()).array();
+//    }
 
-    private byte[] getKey0() {
-        metaKey.resetReaderIndex();
-        ByteBuf bb = metaKey.slice(NS.length + DataType.SPLIT.length, metaKey.readableBytes() - 8);
-        return bb.readBytes(bb.readableBytes()).array();
-    }
-
-    private String getKey0Str() {
-        return new String(getKey0());
-    }
-
-    private byte[] getKey() {
-        metaKey.resetReaderIndex();
-        return metaKey.readBytes(metaKey.readableBytes()).array();
-    }
-
-
-    public static byte[] getMetaVal0(ByteBuf metaVal) throws RedisException {
-        metaVal.resetReaderIndex();
-        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
-        return MyUtils.toByteArray(valueBuf);
-    }
-
-    public static byte[] getMetaVal(byte[] value, long expiration) {
-
-        ByteBuf buf = Unpooled.buffer(12);
-        buf.writeLong(expiration); //ttl 无限期 -1
-        buf.writeBytes(DataType.SPLIT);
-
-        buf.writeInt(DataType.KEY_JSONPATH); //value type
-        buf.writeBytes(DataType.SPLIT);
-
-        buf.writeInt(value.length); //value size
-        buf.writeBytes(DataType.SPLIT);
-
-        //业务数据
-        buf.writeBytes(value);
-
-        return MyUtils.toByteArray(buf);
-
-    }
+//
+//    public static byte[] getMetaVal0(ByteBuf metaVal) throws RedisException {
+//        metaVal.resetReaderIndex();
+//        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
+//        return MyUtils.toByteArray(valueBuf);
+//    }
+//
+//    public static byte[] getMetaVal(byte[] value, long expiration) {
+//
+//        ByteBuf buf = Unpooled.buffer(12);
+//        buf.writeLong(expiration); //ttl 无限期 -1
+//        buf.writeBytes(DataType.SPLIT);
+//
+//        buf.writeInt(DataType.KEY_JSONPATH); //value type
+//        buf.writeBytes(DataType.SPLIT);
+//
+//        buf.writeInt(value.length); //value size
+//        buf.writeBytes(DataType.SPLIT);
+//
+//        //业务数据
+//        buf.writeBytes(value);
+//
+//        return MyUtils.toByteArray(buf);
+//
+//    }
 
 
 
@@ -174,53 +177,58 @@ public class JsonPathMeta {
      * @throws RedisException
      */
     public BulkReply get(byte[] key0) throws RedisException {
+        if (checkTypeAndTTL(key0, DataType.KEY_JSONPATH)) return NIL_REPLY;
 
-        try {
+        byte[] val0 = getVal0(metaVal);
 
-            byte[] values = db.get(getMetaKey(key0));
-
-            if (values == null) {
-                return NIL_REPLY;
-            }
-
-            this.metaVal = Unpooled.wrappedBuffer(values);
-
-            return new BulkReply(key0);
-
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
+        return val0==null?NIL_REPLY:new BulkReply(val0);
+//
+//        try {
+//
+//            byte[] values = db.get(getMetaKey(key0));
+//
+//            if (values == null) {
+//                return NIL_REPLY;
+//            }
+//
+//            this.metaVal = Unpooled.wrappedBuffer(values);
+//
+//            return new BulkReply(key0);
+//
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
 
     }
 
-
-    //////////////////////
-    public int getType() throws RedisException {
-        if (metaVal == null) return -1;
-        return this.metaVal.getInt(8 + 1);
-    }
-
-    /**
-     * 获取meta 数据
-     *
-     * @return
-     * @throws RedisException
-     */
-    protected JsonPathMeta getMeta() throws RedisException {
-
-        try {
-            byte[] value = db.get(getKey());
-            if (value == null) this.metaVal = null;
-            else
-                this.metaVal = MyUtils.concat(value);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
+//
+//    //////////////////////
+//    public int getType() throws RedisException {
+//        if (metaVal == null) return -1;
+//        return this.metaVal.getInt(8 + 1);
+//    }
+//
+//    /**
+//     * 获取meta 数据
+//     *
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected JsonPathMeta getMeta() throws RedisException {
+//
+//        try {
+//            byte[] value = db.get(getKey());
+//            if (value == null) this.metaVal = null;
+//            else
+//                this.metaVal = MyUtils.concat(value);
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
 
 
     /**
@@ -232,23 +240,25 @@ public class JsonPathMeta {
      */
     public StatusReply jpcreate(byte[] json0) throws RedisException {
 
-        //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_JSONPATH)) return QUIT;
+//
+//        //判断类型，非hash 类型返回异常信息；
+//        int type = getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_JSONPATH) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
 
-        if (type != -1 && type != DataType.KEY_JSONPATH) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
-
-        log.debug(getKey0Str());
+//        log.debug(getKey0Str());
 
         //进行json格式校验，然后压缩存储
         Gson gson3 = new GsonBuilder().enableComplexMapKeySerialization().create(); //开启复杂处理Map方法
-        JsonObject jsonObject = gson3.fromJson(new String(json0), JsonObject.class);
+        JsonObject jsonObject = gson3.fromJson(new String(json0), JsonObject.class);//进行json格式验证；
 
 
         try {
-            db.put(getMetaKey(getKey0()), getMetaVal(Snappy.compress(json0), -1));
+            db.put(getDataKey2Byte(getKey0(),DataType.KEY_JSONPATH_DATA), genDataByteVal(Snappy.compress(json0), -1));
         } catch (IOException | RocksDBException e) {
             e.printStackTrace();
             Throwables.propagateIfPossible(e, RedisException.class);
@@ -265,6 +275,7 @@ public class JsonPathMeta {
      * @throws RedisException
      */
     public MultiBulkReply jpget(byte[] jsonpath0) throws RedisException {
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_JSONPATH)) return MultiBulkReply.EMPTY;
 
         JsonElement result = null;
         try {
@@ -318,19 +329,22 @@ public class JsonPathMeta {
      */
     public IntegerReply jpset(byte[] jsonpath0,byte[] val1) throws RedisException {
 
+
         if (jsonpath0.length == 0) {
             throw new RedisException("wrong number of arguments for JPGet");
         }
 
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_JSONPATH)) return integer(0);
+
         //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();
-
-        if (type != -1 && type != DataType.KEY_JSONPATH) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
-
-        log.debug(getKey0Str());
+//        int type = getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_JSONPATH) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
+//
+//        log.debug(getKey0Str());
 
         try {
             DocumentContext json  = jsonCache.get(Unpooled.wrappedBuffer(getKey0()));
@@ -355,6 +369,8 @@ public class JsonPathMeta {
      * @throws RedisException
      */
     public IntegerReply jpdel(byte[] jsonpath0) throws RedisException {
+
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_JSONPATH)) return integer(0);
 
         try {
             DocumentContext json  = jsonCache.get(Unpooled.wrappedBuffer(getKey0()));
@@ -425,7 +441,8 @@ public class JsonPathMeta {
                         {
                             DocumentContext json = notification.getValue();
 
-                            db.put(getMetaKey(notification.getKey().array()), getMetaVal(Snappy.compress(json.jsonString()), -1));
+//                            db.put(getMetaKey(notification.getKey().array()), getMetaVal(Snappy.compress(json.jsonString()), -1));
+                            db.put(getDataKey2Byte(notification.getKey().array(),DataType.KEY_JSONPATH_DATA), genDataByteVal(Snappy.compress(json.jsonString()), -1));
 //                            db.put(notification.getKey().array(), Snappy.compress(json.jsonString()));
 
                             log.debug(String.format("获取DocumentContext Json文档，持久化到 RocksDb。\n key:%s json:%s",
@@ -450,7 +467,9 @@ public class JsonPathMeta {
                     key.resetReaderIndex();
 
 //                    byte[] value = db.get(key.array());
-                    byte[] value = db.get(getMetaKey(key.array()));
+//                    byte[] value = db.get(getMetaKey(key.array()));
+                    byte[] value = db.get(getDataKey2Byte(key.array(),DataType.KEY_JSONPATH_DATA));
+
 
 
                     Configuration conf = Configuration.builder().jsonProvider(new GsonJsonProvider()).mappingProvider(new GsonMappingProvider()).build();
@@ -474,7 +493,7 @@ public class JsonPathMeta {
 //
 //                    });
 
-                    byte[] metaVal0 = getMetaVal0(MyUtils.concat(value));
+                    byte[] metaVal0 = getVal0(MyUtils.concat(value));
                     DocumentContext json = JsonPath.using(conf).parse(Snappy.uncompressString(metaVal0));
 
                     log.debug(String.format("获取DocumentContext Json文档，持久化到 RocksDb。\n key:%s json:%s",

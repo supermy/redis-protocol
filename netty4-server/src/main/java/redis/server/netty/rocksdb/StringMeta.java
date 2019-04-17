@@ -689,7 +689,7 @@ public class StringMeta extends BaseMeta {
 
                 //封装metaVal
 //            for (int i = 0; i < field_or_value1.length; i += 2) {
-//            byte[] val = genVal(field_or_value1[i + 1], -1).getVal();
+//            byte[] val = genDataVal(field_or_value1[i + 1], -1).getVal();
                 byte[] val0 = getMetaVal(field_or_value1[i + 1], -1);
 //                batch.put(field_or_value1[i], val);
                 batch.put(key0, val0);

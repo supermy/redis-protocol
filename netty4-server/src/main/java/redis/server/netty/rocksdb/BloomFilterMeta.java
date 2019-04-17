@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import static redis.netty4.BulkReply.NIL_REPLY;
 import static redis.netty4.IntegerReply.integer;
 import static redis.netty4.StatusReply.OK;
+import static redis.netty4.StatusReply.QUIT;
 import static redis.server.netty.rocksdb.RedisBase.invalidValue;
 
 //import org.slf4j.Logger;
@@ -63,20 +64,20 @@ import static redis.server.netty.rocksdb.RedisBase.invalidValue;
  * method: BFADD key element [element ...] ；BFExist key [key ...] ；BFMERGE destkey sourcekey [sourcekey ...]
  * <p>
  */
-public class BloomFilterMeta {
+public class BloomFilterMeta extends BaseMeta{
 
     private static Logger log = Logger.getLogger(BloomFilterMeta.class);
 
 
 //    ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
 
-    private static RocksDB db;
+//    private static RocksDB db;
 
-    private byte[] NS;
-    private static byte[] TYPE = DataType.KEY_META;
+//    private byte[] NS;
+//    private static byte[] TYPE = DataType.KEY_META;
 
-    private ByteBuf metaKey;
-    private ByteBuf metaVal;
+//    private ByteBuf metaKey;
+//    private ByteBuf metaVal;
 
 
     private BloomFilterMeta() {
@@ -97,6 +98,7 @@ public class BloomFilterMeta {
     public static BloomFilterMeta getInstance(RocksDB db0, byte[] ns0) {
         instance.db = db0;
         instance.NS = ns0;
+        instance.VAlTYPE = DataType.KEY_BLOOMFILTER;
         return instance;
     }
 
@@ -109,35 +111,36 @@ public class BloomFilterMeta {
      * @return
      * @throws RedisException
      */
+    @Deprecated
     public BloomFilterMeta genMetaKey(byte[] key0) throws RedisException {
         if (key0 == null) {
             throw new RedisException(String.format("主键不能为空"));
         }
-        metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
+        metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
 
         return this;
     }
 
+//    @Deprecated
+//    public static byte[] getMetaKey(byte[] key0) {
+//        ByteBuf metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, KEYTYPE);
+//        return MyUtils.toByteArray(metaKey);
+//    }
 
-    public static byte[] getMetaKey(byte[] key0) {
-        ByteBuf metaKey = MyUtils.concat(instance.NS, DataType.SPLIT, key0, DataType.SPLIT, TYPE);
-        return MyUtils.toByteArray(metaKey);
-    }
-
-    private byte[] getKey0() {
-        metaKey.resetReaderIndex();
-        ByteBuf bb = metaKey.slice(NS.length + DataType.SPLIT.length, metaKey.readableBytes() - 8);
-        return bb.array();
-    }
-
-    private String getKey0Str() {
-        return new String(getKey0());
-    }
-
-    private byte[] getKey() {
-        metaKey.resetReaderIndex();
-        return metaKey.array();
-    }
+//    private byte[] getKey0() {
+//        metaKey.resetReaderIndex();
+//        ByteBuf bb = metaKey.slice(NS.length + DataType.SPLIT.length, metaKey.readableBytes() - 8);
+//        return bb.array();
+//    }
+//
+//    private String getKey0Str() {
+//        return new String(getKey0());
+//    }
+//
+//    private byte[] getKey() {
+//        metaKey.resetReaderIndex();
+//        return metaKey.array();
+//    }
 
 //    public void setKey0(byte[] key0)  {
 //        metaKey.resetReaderIndex();
@@ -175,17 +178,17 @@ public class BloomFilterMeta {
 //        return valueBuf.readBytes(valueBuf.readableBytes()).array();
 //    }
 
-    public static byte[] getMetaVal0(ByteBuf metaVal) throws RedisException {
-        metaVal.resetReaderIndex();
-        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
-        return MyUtils.toByteArray(valueBuf);
-    }
+//    public static byte[] getMetaVal0(ByteBuf metaVal) throws RedisException {
+//        metaVal.resetReaderIndex();
+//        ByteBuf valueBuf = metaVal.slice(8 + 4 + 4 + 3, metaVal.readableBytes() - 8 - 4 - 4 - 3);
+//        return MyUtils.toByteArray(valueBuf);
+//    }
 
 //    private String getVal0Str() throws RedisException {
 //        return new String(getVal0());
 //    }
 
-//    protected BloomFilterMeta genVal(byte[] value, long expiration) {
+//    protected BloomFilterMeta genDataVal(byte[] value, long expiration) {
 //
 //        ByteBuf ttlBuf = Unpooled.buffer(12);
 //        ttlBuf.writeLong(expiration); //ttl 无限期 -1
@@ -208,24 +211,24 @@ public class BloomFilterMeta {
 //    }
 
 
-    public static byte[] getMetaVal(byte[] value, long expiration) {
-
-        ByteBuf buf = Unpooled.buffer(12);
-        buf.writeLong(expiration); //ttl 无限期 -1
-        buf.writeBytes(DataType.SPLIT);
-
-        buf.writeInt(DataType.KEY_BLOOMFILTER); //value type
-        buf.writeBytes(DataType.SPLIT);
-
-        buf.writeInt(value.length); //value size
-        buf.writeBytes(DataType.SPLIT);
-
-        //业务数据
-        buf.writeBytes(value);
-
-        return MyUtils.toByteArray(buf);
-
-    }
+//    public static byte[] getMetaVal(byte[] value, long expiration) {
+//
+//        ByteBuf buf = Unpooled.buffer(12);
+//        buf.writeLong(expiration); //ttl 无限期 -1
+//        buf.writeBytes(DataType.SPLIT);
+//
+//        buf.writeInt(DataType.KEY_BLOOMFILTER); //value type
+//        buf.writeBytes(DataType.SPLIT);
+//
+//        buf.writeLong(value.length); //value size
+//        buf.writeBytes(DataType.SPLIT);
+//
+//        //业务数据
+//        buf.writeBytes(value);
+//
+//        return MyUtils.toByteArray(buf);
+//
+//    }
 
 //    /**
 //     * 分解 Value,获取业务数据
@@ -368,7 +371,7 @@ public class BloomFilterMeta {
 //            ttl = RocksdbRedis.bytesToLong(seconds2);//fixme 重构
 //        }
 //
-//        genVal(val1, ttl);
+//        genDataVal(val1, ttl);
 //
 //        try {
 //
@@ -435,52 +438,60 @@ public class BloomFilterMeta {
      */
     public BulkReply get(byte[] key0) throws RedisException {
 
-        try {
+        if (checkTypeAndTTL(key0, DataType.KEY_BLOOMFILTER)) return NIL_REPLY;
 
-            byte[] values = db.get(getMetaKey(key0));
+        byte[] val0 = getVal0(metaVal);
 
-            if (values == null) {
-                return NIL_REPLY;
-            }
+        return val0==null?NIL_REPLY:new BulkReply(val0);
 
-            this.metaVal = Unpooled.wrappedBuffer(values);
-
-            return new BulkReply(key0);
-
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
+//
+//
+//        try {
+//
+//            byte[] values = db.get(getMetaKey(key0));
+//
+//            if (values == null) {
+//                return NIL_REPLY;
+//            }
+//
+//            this.metaVal = Unpooled.wrappedBuffer(values);
+//
+//            return new BulkReply(key0);
+//
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
 
     }
 
 
     //////////////////////
-    public int getType() throws RedisException {
-        if (metaVal == null) return -1;
-        return this.metaVal.getInt(8 + 1);
-    }
+//    public int getType() throws RedisException {
+//        if (metaVal == null) return -1;
+//        return this.metaVal.getInt(8 + 1);
+//    }
 
-    /**
-     * 获取meta 数据
-     *
-     * @return
-     * @throws RedisException
-     */
-    protected BloomFilterMeta getMeta() throws RedisException {
-
-        try {
-            byte[] value = db.get(getKey());
-            if (value == null) this.metaVal = null;
-            else
-                this.metaVal = MyUtils.concat(value);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
-            throw new RedisException(e.getMessage());
-        }
-
-        return this;
-    }
+//    /**
+//     * 获取meta 数据
+//     *
+//     * @return
+//     * @throws RedisException
+//     */
+//    protected BloomFilterMeta getMeta() throws RedisException {
+//
+//        try {
+//            byte[] value = db.get(getKey());
+//            if (value == null) this.metaVal = null;
+//            else
+//                this.metaVal = MyUtils.concat(value);
+//        } catch (RocksDBException e) {
+//            e.printStackTrace();
+//            throw new RedisException(e.getMessage());
+//        }
+//
+//        return this;
+//    }
 
 
     /**
@@ -493,16 +504,18 @@ public class BloomFilterMeta {
      */
     public StatusReply bfcreate(long expectedInsertions, double fpp) throws RedisException {
 
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_BLOOMFILTER)) return QUIT;
 
-        //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();
 
-        if (type != -1 && type != DataType.KEY_BLOOMFILTER) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
-
-        log.debug(getKey0Str());
+//        //判断类型，非hash 类型返回异常信息；
+//        int type = getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_BLOOMFILTER) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
+//
+//        log.debug(getKey0Str());
 
         //初始化HLL
         BloomFilter<byte[]> filter = BloomFilter.create(Funnels.byteArrayFunnel(), expectedInsertions, fpp);
@@ -510,12 +523,18 @@ public class BloomFilterMeta {
         try {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             filter.writeTo(output);
+//            db.put(getMetaKey(getKey0()), getMetaVal(output.toByteArray(), -1));
+            log.debug(output.toByteArray().length);
+            db.put(getDataKey2Byte(getKey0(),DataType.KEY_BLOOMFILTER_DATA), genDataByteVal(output.toByteArray(), -1));
 
+            output.flush();
+            output.close();
 
-            db.put(getMetaKey(getKey0()), getMetaVal(output.toByteArray(), -1));
         } catch (IOException | RocksDBException e) {
             e.printStackTrace();
             Throwables.propagateIfPossible(e, RedisException.class);
+        }finally {
+
         }
 
         return OK;
@@ -541,15 +560,17 @@ public class BloomFilterMeta {
             throw new RedisException("wrong number of arguments for BFADD");
         }
 
-        //判断类型，非hash 类型返回异常信息；
-        int type = getMeta().getType();
-
-        if (type != -1 && type != DataType.KEY_BLOOMFILTER) {
-            //抛出异常 类型不匹配
-            throw invalidValue();
-        }
-
-        log.debug(getKey0Str());
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_BLOOMFILTER)) return integer(0);
+//
+//        //判断类型，非hash 类型返回异常信息；
+//        int type = getMeta().getType();
+//
+//        if (type != -1 && type != DataType.KEY_BLOOMFILTER) {
+//            //抛出异常 类型不匹配
+//            throw invalidValue();
+//        }
+//
+//        log.debug(getKey0Str());
 
 
         BloomFilter<byte[]> filter = null;
@@ -583,6 +604,7 @@ public class BloomFilterMeta {
      */
     public IntegerReply bfexists(byte[] field1) throws RedisException {
 
+        if (checkTypeAndTTL(getKey0(), DataType.KEY_BLOOMFILTER)) return integer(0);
 
         BloomFilter<byte[]> filter = null;
         try {
@@ -611,12 +633,12 @@ public class BloomFilterMeta {
             BloomFilter<byte[]> filter = null;
             for (int i = 0; i < key0.length; i++) {
                 if (i == 0) {
-                    byte[] metaVal0 = getMetaVal0(Unpooled.wrappedBuffer(db.get(getMetaKey(getKey0()))));
+                    byte[] metaVal0 = getVal0(Unpooled.wrappedBuffer(db.get(getDataKey2Byte(getKey0(),DataType.KEY_BLOOMFILTER_DATA))));
                     ByteArrayInputStream input = new ByteArrayInputStream(metaVal0);
                     filter = BloomFilter.readFrom(input, Funnels.byteArrayFunnel());
 
                 } else {
-                    byte[] metaVal0 = getMetaVal0(Unpooled.wrappedBuffer(db.get(getMetaKey(getKey0()))));
+                    byte[] metaVal0 = getVal0(Unpooled.wrappedBuffer(db.get(getDataKey2Byte(getKey0(),DataType.KEY_BLOOMFILTER_DATA))));
                     ByteArrayInputStream input = new ByteArrayInputStream(metaVal0);
                     BloomFilter<byte[]> filter1 = BloomFilter.readFrom(input, Funnels.byteArrayFunnel());
                     filter.putAll(filter1);
@@ -627,7 +649,7 @@ public class BloomFilterMeta {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             filter.writeTo(output);
 
-            db.put(getMetaKey(getKey0()), getMetaVal(output.toByteArray(), -1));
+            db.put(getDataKey2Byte(getKey0(),DataType.KEY_BLOOMFILTER_DATA), genDataByteVal(output.toByteArray(), -1));
 
         } catch (IOException | RocksDBException e) {
             e.printStackTrace();
@@ -708,7 +730,8 @@ public class BloomFilterMeta {
                         }
 
                         //持久化数据
-                        db.put(getMetaKey(notification.getKey().array()), getMetaVal(output.toByteArray(), -1));
+//                        db.put(getMetaKey(notification.getKey().array()), getMetaVal(output.toByteArray(), -1));
+                        db.put(getDataKey2Byte(notification.getKey().array(),DataType.KEY_BLOOMFILTER_DATA), genDataByteVal(output.toByteArray(), -1));
 
                     } catch (RocksDBException | IOException e) {
                         e.printStackTrace();
@@ -726,10 +749,12 @@ public class BloomFilterMeta {
 
                     log.debug(MyUtils.ByteBuf2String(key0));
 
-                    byte[] value = db.get(getMetaKey(key0.array()));
+//                    byte[] value = db.get(getMetaKey(key0.array()));
+                    byte[] value = db.get(getDataKey2Byte(key0.array(),DataType.KEY_BLOOMFILTER_DATA));
+
 
                     //解析得到业务数据
-                    byte[] metaVal0 = getMetaVal0(Unpooled.wrappedBuffer(value));
+                    byte[] metaVal0 = getVal0(Unpooled.wrappedBuffer(value));
 
                     log.debug(1);
                     log.debug(metaVal0.length);
@@ -740,7 +765,7 @@ public class BloomFilterMeta {
 
                     BloomFilter<byte[]> filter = BloomFilter.readFrom(input, Funnels.byteArrayFunnel());
 
-                    log.debug(3);
+//                    log.debug(3);
 
                     log.debug(String.format("加载BloomFilter(误差率%s)从RocksDb: key %s  数量%s  初始验证：%s 修改验证：%s",
                             filter.expectedFpp(),
